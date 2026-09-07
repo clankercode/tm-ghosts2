@@ -25,15 +25,14 @@ rather than the TM2020 ghost-clip manager.
 - **Spectate** — writes the ghost's instance `MwId` to `UIAll.SpectatorForcedTarget` (what
   Nadeo's `UISequences::SetReplayGhostFocus` does), optionally with `ForceSpectator` and
   `UISequence = EndRound`. Stopping restores the previous values.
-- **Playback control** (script modes) — per loaded ghost: pause/resume, 0.25x/0.5x/1x/2x speed
-  and a seek slider. The engine recomputes each ghost's time every frame as
-  `now + OffsetMs - StartTime`, where `OffsetMs` is the add entry's offset that it re-reads every
-  frame; Ghosts2 writes that field (`CTrackManiaRaceNew+0xdd0[i]+0x10`, matched by GhostInstId) once
-  per frame while a ghost is paused or off 1x, and once for a seek. Works while driving and while
-  spectating; a respawn rebuilds the engine's records and drops the offset (the ghost restarts with
-  the player, as race ghosts do). In the classic campaign race the engine's own medal/PB ghosts get
-  the same controls and can be spectated (their records sit at `CTrackManiaRace+0x1080`; the clock
-  is shifted through `CGameCtnGhost+0x40`, restored on release). Setting `Time control` turns it off.
+- **Playback control** — per ghost (plugin-loaded instances in script modes, and the engine's own
+  medal/PB ghosts in the classic campaign race): pause/resume, speed (¼x … 4x), step ±100 ms, seek,
+  plus a Ghosts++-style scrubber strip at the bottom of the screen. Ghosts2 hooks the engine's
+  per-record clock update (`RaceGhostRecord_UpdatePlaybackTime`, `Dev::Hook`) and sets the record's
+  StartTime from the exact tick time, so a paused car is perfectly still and seeks land exactly;
+  "resync" hands the clock back to the game (the ghost snaps to the player's race time). A respawn
+  rebuilds the engine's records, which releases any owned clock. Setting `Time control` turns the
+  hook off.
 - **Auto re-add** (on by default) — the stock solo mode calls `RaceGhost_RemoveAll()` on every
   phase transition, silently wiping plugin ghosts. Ghosts2 keeps the `CGameGhostScript@`
   handles and puts them back, rate limited, giving up after a few failed attempts so it can
@@ -47,12 +46,12 @@ rather than the TM2020 ghost-clip manager.
 
 Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`,
 `RemoveAll`, `Spectate`, `StopSpectating`, `State`, `ShowWindow`, `GetGhostTime`, `Seek`,
-`SetPaused` and `SetSpeed` for other Openplanet scripts. The optional `ghosts2` pack (`mp4pack/`, plugin id `tm-ghosts2-mp4pack`,
+`SetPaused`, `SetSpeed`, `Resync` and `ShowScrubber` for other Openplanet scripts. The optional `ghosts2` pack (`mp4pack/`, plugin id `tm-ghosts2-mp4pack`,
 build with `mp4pack/build.sh`) exposes the same operations through
 `tm-mp4-control/tools/mp4call.py ghosts2.list` (subcommands: `state`, `load_replay`,
 `load_pb`, `load_medal`, `remove`, `remove_all`, `spectate`, `stop_spectating`,
 `show_window`, `ghost_time instId=`, `seek instId= ms=`, `pause instId= paused=`,
-`speed instId= speed=`). The pack must not re-declare the imports: Openplanet compiles a
+`speed instId= speed=`, `resync instId=`, `scrubber instId= visible=`). The pack must not re-declare the imports: Openplanet compiles a
 dependency's `exports` files into the dependent module.
 
 ## Build
@@ -67,10 +66,10 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 ## Known limitations
 
-- **Playback control is a memory write against engine build 2019-11-19_18_50.** Script-mode
-  instances are driven through their add entry's `OffsetMs`; the classic campaign race's engine
-  ghosts (`RaceGhosts`, records at `CTrackManiaRace+0x1080`) through `CGameCtnGhost+0x40`. The
-  script API itself only offers the forward-only `uint OffsetMs` of `RaceGhost_AddWithOffset`.
+- **Playback control hooks engine build 2019-11-19_18_50** (`RaceGhostRecord_UpdatePlaybackTime` at
+  image offset 0x848f20; the prologue bytes are checked before hooking and the feature disables
+  itself on a mismatch). The script API itself only offers the forward-only `uint OffsetMs` of
+  `RaceGhost_AddWithOffset`.
 - **Ghost identity is a heuristic.** `CGameCtnGhost.Id` is `0xffffffff` for engine-loaded
   ghosts, so plugin ghosts are matched to `RaceGhosts` rows by stripped nickname + race time.
   Two identical runs by the same name are matched 1:1 by count, but cannot be told apart.

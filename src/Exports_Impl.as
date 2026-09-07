@@ -91,6 +91,17 @@ namespace Ghosts2 {
         o["timeCtlWrites"] = g_timeCtlWrites;
         o["timeCtlHook"] = g_clockHook !is null;
         o["timeCtlOwned"] = g_clock.Length;
+        auto ents = Json::Array();
+        for (uint i = 0; i < g_clock.Length; i++) {
+            auto e = Json::Object();
+            e["rec"] = Text::Format("%llx", g_clock[i].rec);
+            e["wanted"] = g_clock[i].wanted;
+            e["paused"] = g_clock[i].paused;
+            e["speed"] = g_clock[i].speed;
+            e["lastNowMs"] = g_clock[i].lastNowMs;
+            ents.Add(e);
+        }
+        o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
         return o;
     }
