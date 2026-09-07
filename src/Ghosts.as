@@ -28,6 +28,9 @@ class PluginGhost {
     CGameCtnGhost@ ctn;
     uint64 ctnPtr = 0;
 
+    // script instance found in the race that we did not add (plugin reload, the game's own leaderboard dialog, ...)
+    bool adopted = false;
+
     bool Controlled() { return clockRec != 0; }
 
     PluginGhost(CGameGhostScript@ g, const string &in src) {
@@ -43,6 +46,18 @@ class PluginGhost {
         @ctn = g;
         ctnPtr = NodPointer(g);
         source = "engine";
+        nickname = g is null ? "?" : string(g.GhostNickname);
+        raceTime = g is null ? 0 : g.RaceTime;
+        key = GhostKey(nickname, raceTime);
+        inRace = true;
+    }
+
+    PluginGhost(CGameCtnGhost@ g, uint id, const string &in src) {
+        adopted = true;
+        @ctn = g;
+        ctnPtr = NodPointer(g);
+        instId = id;
+        source = src;
         nickname = g is null ? "?" : string(g.GhostNickname);
         raceTime = g is null ? 0 : g.RaceTime;
         key = GhostKey(nickname, raceTime);
@@ -77,6 +92,42 @@ void Ghosts_SyncEngine() {
     // learn each engine ghost's GhostInstId from its playback record (needed for the exports / pack)
     for (uint i = 0; i < g_engineGhosts.Length; i++) {
         if (g_engineGhosts[i].instId == 0) { GhostSlot slot; TimeCtl_Resolve(g_engineGhosts[i], slot); }
+    }
+}
+
+// Script modes: every RaceGhost_Add'ed instance lives in the race's add-entry array (race+0xdd0, stride 0x18:
+// +0x0 CGameCtnGhost, +0x8 displayAsPlayerBest, +0x10 OffsetMs, +0x14 GhostInstId). Instances we do not track
+// (added before a plugin reload, or by the game's own leaderboard dialog) are adopted so they get the same
+// spectate / time control / remove actions. The CGameGhostScript handle is recovered from DataFileMgr.Ghosts by
+// nickname + time when possible (needed for re-adding after the mode wipes ghosts).
+void Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
+    auto race = CurrentRace();
+    if (race is null) return;
+    uint64 entries = Dev::GetOffsetUint64(race, O_Race_AddEntries);
+    uint nEntries = uint(Dev::GetOffsetUint64(race, O_Race_AddEntryCount) & 0xffffffff);
+    if (entries == 0 || nEntries == 0 || nEntries > MaxGhostRecords) return;
+    for (uint i = 0; i < nEntries; i++) {
+        uint64 e = entries + AddEntryStride * i;
+        uint64 v, ghostPtr, flags;
+        try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafeU64(e); flags = SafeU64(e + 8); } catch { return; }
+        uint instId = uint(v >> 32);
+        if (instId == 0 || Ghosts_FindByInstId(instId) !is null) continue;
+        auto ctn = cast<CGameCtnGhost>(NodFromPointer(ghostPtr));
+        auto pg = PluginGhost(ctn, instId, "race");
+        pg.offsetMs = uint(v & 0xffffffff);
+        pg.displayAsPlayerBest = (flags & 0xffffffff) != 0;
+        auto dfm = rules.DataFileMgr;
+        if (dfm !is null) {
+            for (uint j = 0; j < dfm.Ghosts.Length; j++) {
+                auto gs = dfm.Ghosts[j];
+                if (gs is null || string(gs.Nickname) != pg.nickname || ScriptGhostTime(gs) != pg.raceTime) continue;
+                @pg.ghost = gs;
+                pg.source = "race (DataFileMgr)";
+                break;
+            }
+        }
+        g_ghosts.InsertLast(pg);
+        trace("Ghosts2: adopted race ghost " + pg.nickname + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
     }
 }
 
@@ -173,10 +224,9 @@ void Ghosts_Update() {
     if (now - g_lastScan < S_ScanIntervalMs) return;
     g_lastScan = now;
     Ghosts_SyncEngine();
-    if (g_ghosts.Length == 0) return;
-
     auto rules = CurrentRules();
-    if (rules is null) return;
+    if (rules !is null) Ghosts_AdoptRaceInstances(rules);
+    if (g_ghosts.Length == 0 || rules is null) return;
 
     // RaceGhosts is empty in script-driven modes. Query each tracked instance directly.
     // A freshly added ghost reports startTime==0 && !visible until the player (re)starts,

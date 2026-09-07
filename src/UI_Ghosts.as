@@ -120,7 +120,9 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         if (UI::IsItemHovered()) UI::SetTooltip("Re-add now (RaceGhost_Add)");
         UI::SameLine();
         UI::BeginDisabled(g_busy);
+        UI::BeginDisabled(pg.ghost is null);
         if (UI::Button(Icons::FloppyO + "##save")) Save_Ghost(pg.ghost, SuggestedSaveName(pg));
+        UI::EndDisabled();
         UI::EndDisabled();
         if (UI::IsItemHovered()) UI::SetTooltip("Save as " + SuggestedSaveName(pg) + " (DataFileMgr.Replay_Save)");
         UI::SameLine();

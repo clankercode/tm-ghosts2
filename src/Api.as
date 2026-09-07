@@ -65,6 +65,17 @@ uint64 NodPointer(CMwNod@ nod) {
     return ptr;
 }
 
+// Reverse of NodPointer: a nod handle for a raw address (only for real CMwNod-derived objects).
+CMwNod@ NodFromPointer(uint64 ptr) {
+    if (ptr == 0) return null;
+    auto tmpNod = CMwNod();
+    uint64 saved = Dev::GetOffsetUint64(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, ptr);
+    CMwNod@ nod = Dev::GetOffsetNod(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, saved);
+    return nod;
+}
+
 // True while the game's own in-game menu (Escape) is open.
 bool InGameMenuOpen() {
     auto app = App();
