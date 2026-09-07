@@ -10,7 +10,9 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 - [x] Spectate a ghost via `UIAll.SpectatorForcedTarget` (+ restore) — verified in-game via tm-mp4-control `spectate`
 - [~] Auto re-add after the mode's `RaceGhost_RemoveAll` — fix detection: `RaceGhosts` is empty in script modes; use per-instance `RaceGhost_GetStartTime/IsVisible` (started before, now 0 ⇒ removed) (grok helper)
 - [ ] Classic campaign race (`CTrackManiaRace1P`): script API is inactive there; needs engine-level add/remove (Ghidra)
-- [ ] Ghost time control (pause / seek / speed) — find per-instance playback state (start time) in engine memory; Ghidra RE of `RaceGhost_GetStartTime`
+- [ ] Ghost time control (pause / seek / speed) — engine playback state not found by memory scans (vehicle-vis entry keyed by GhostInstId holds position only); needs Ghidra RE of `RaceGhost_GetStartTime`
+- [ ] Ghost offset (forward seek) via remove + `RaceGhost_AddWithOffset(ghost, ms)` + `SpawnPlayer` (verified: offset = seek into the replay, same startTime) — cheap partial scrubber for script modes
+- [ ] Spectate camera choice: `SpectatorForceCameraType` 0 close chase, 1 behind car, 2/3 track cam (verified)
 - [x] Save ghost: `DataFileMgr.Replay_Save("Ghosts2/x.Replay.Gbx", RootMap, ghostScript)` verified in-game (writes under Replays/); no `Ghost_Save` in MP4
 - [ ] Ghost list extras: distance/delta to player, per-ghost visibility toggle (`RaceGhost_IsVisible` is read-only?), colours
 - [~] Exports (`Ghosts2::*`) + tm-mp4-control command pack `ghosts2.*` (grok helper) — user request 2026-09-07
