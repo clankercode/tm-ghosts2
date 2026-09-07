@@ -79,6 +79,11 @@ namespace Ghosts2Mp4Pack {
             Ghosts2::StopSpectating();
             return OkTrue();
         }
+        if (cmd == "cam_reset") {
+            auto o = Json::Object();
+            o["changed"] = Ghosts2::ResetCamera();
+            return Ok(o);
+        }
         if (cmd == "ghost_time") {
             uint instId = uint(args.Get("instId", 0));
             auto o = Json::Object(); o["ok"] = true; o["data"] = Ghosts2::GetGhostTime(instId);

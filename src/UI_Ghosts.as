@@ -20,6 +20,9 @@ void DrawGhostsTab() {
         UI::EndDisabled();
     }
     UI::SameLine();
+    if (UI::Button(Icons::VideoCamera + " Reset camera")) CamTarget_ResetToLocal();
+    AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
+    UI::SameLine();
     UI::Text("\\$888" + race.RaceGhosts.Length + " in race, " + g_ghosts.Length + " ours");
 
     UI::Separator();

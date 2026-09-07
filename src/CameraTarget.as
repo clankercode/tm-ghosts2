@@ -86,3 +86,51 @@ void CamTarget_Clear() {
 }
 
 bool CamTarget_Active() { return g_camHook !is null && g_camForcedId != CamId_None; }
+
+// --- camera target reset after spectating ---------------------------------------------------------
+//
+// Chase / free spectator cameras (SpectatorForceCameraType 1 / 2, or the game's own controls) point the camera
+// system's *auto* target id (+0x48) at the ghost. Nothing writes it back when ForceSpectator / the forced target are
+// cleared, and a respawn does not touch it either, so the camera keeps following the ghost (the Replay clip camera
+// is different: stopping the clip re-targets the local vehicle). 0 = the local vehicle.
+
+const uint64 O_Playground_Terminals = 0xa00;      // CGameCtnPlayground: CGameTerminal* array (+0xa08 count)
+const uint64 O_Terminal_CamSys = 0x30;            // CGameTerminal: its CGameCameraSystem
+const uint64 O_CamSys_AutoId = 0x48;
+uint g_camResets = 0;
+
+uint64 CamSys_Ptr() {
+    auto pg = cast<CGameCtnPlayground>(App().CurrentPlayground);
+    if (pg is null) return 0;
+    uint64 terms = Dev::GetOffsetUint64(pg, uint16(O_Playground_Terminals));
+    uint nTerms = Dev::GetOffsetUint32(pg, uint16(O_Playground_Terminals + 8));
+    if (terms == 0 || nTerms == 0) return 0;
+    uint64 term = Dev::ReadUInt64(terms);
+    if (!LooksLikeNod(term)) return 0;
+    uint64 cs = Dev::ReadUInt64(term + O_Terminal_CamSys);
+    if (!LooksLikeNod(cs)) return 0;
+    return cs;
+}
+
+// Put the camera back on the local vehicle if it is still aimed at something else. Returns true when it wrote.
+bool CamTarget_ResetToLocal() {
+    uint64 cs = CamSys_Ptr();
+    if (cs == 0) return false;
+    uint cur = Dev::ReadUInt32(cs + O_CamSys_AutoId);
+    if (cur == 0) return false;
+    Dev::Write(cs + O_CamSys_AutoId, uint(0));
+    g_camResets++;
+    return true;
+}
+
+// Stop-spectate path: reset now, then keep checking through the respawn window (the spawn rebuilds the terminal's
+// state and could re-apply the ghost id).
+void CamTarget_ResetAfterStop() {
+    CamTarget_ResetToLocal();
+    uint until = Time::Now + S_SpectateRespawnDelayMs + 2500;
+    while (Time::Now < until) {
+        sleep(100);
+        if (g_specActive) return;  // spectating again: leave it alone
+        CamTarget_ResetToLocal();
+    }
+}

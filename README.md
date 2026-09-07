@@ -32,7 +32,9 @@ rather than the TM2020 ghost-clip manager.
   ghosts** (setting *Spectate → Restart when you stop spectating*): forcing the spectator makes
   the engine play a spectator camera clip on the ghost (`CGameCtnMediaClipPlayer` on the game
   terminal) that clearing the UI config never stops; only a (re)spawn of your car does. Ghosts++
-  does the same.
+  does the same. With the Follow / FreeCam / Game cameras the camera system's auto target id stays
+  on the ghost even after that respawn, so stopping also writes it back to the local vehicle
+  ("Reset camera" on the Ghosts tab does the same by hand).
 - **Playback control** — per ghost (plugin-loaded instances in script modes, and the engine's own
   medal/PB ghosts in the classic campaign race): pause/resume, speed (¼x … 4x), step ±100 ms, seek,
   plus a Ghosts++-style scrubber strip at the bottom of the screen. Ghosts2 hooks the engine's

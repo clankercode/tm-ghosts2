@@ -92,6 +92,7 @@ namespace Ghosts2 {
     void RemoveAll() { Ghosts_RemoveAll(); }
     bool Spectate(uint instId) { return Spectate_Start(instId); }
     void StopSpectating() { Spectate_Stop(); }
+    bool ResetCamera() { return CamTarget_ResetToLocal(); }
 
     Json::Value@ State() {
         auto o = Json::Object();
@@ -118,6 +119,7 @@ namespace Ghosts2 {
         o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
         o["lockAll"] = Lock_Enabled();
+        o["camResets"] = g_camResets;
         o["camHook"] = g_camHook !is null;
         o["camForcedId"] = g_camForcedId;
         o["camHookWrites"] = g_camHookWrites;

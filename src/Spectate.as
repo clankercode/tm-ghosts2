@@ -89,6 +89,8 @@ void Spectate_Stop() {
     if (wasForced && S_SpectateRespawnOnStop) {
         if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
     }
+    // Chase / free cameras leave the camera system's auto target on the ghost even after the respawn.
+    startnew(CamTarget_ResetAfterStop);
 }
 
 // Forget the saved state without writing to the game (map change / plugin unload paths).
