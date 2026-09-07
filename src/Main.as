@@ -56,7 +56,7 @@ void DrawStateTab() {
     UI::Text("PlaygroundScript: " + TypeName(app.PlaygroundScript));
     UI::Text("CurrentPlayground: " + TypeName(app.CurrentPlayground));
     auto map = CurrentMap();
-    UI::Text("Map: " + (map is null ? "\\$888null" : string(map.MapName) + "  \\$888" + CurrentMapUid()));
+    UI::Text("Map: " + (map is null ? "\\$888null" : Text::OpenplanetFormatCodes(string(map.MapName)) + "  \\$888" + CurrentMapUid()));
     auto rules = CurrentRules();
     UI::Text("DataFileMgr: " + (rules is null ? "\\$888n/a" : TypeName(rules.DataFileMgr)));
     UI::Text("ScoreMgr: " + (rules is null ? "\\$888n/a" : TypeName(rules.ScoreMgr)));

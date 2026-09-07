@@ -87,6 +87,33 @@ float PrevSpeed(float speed) {
     return 4.0;
 }
 
+void DrawSpectateMenuRows(array<PluginGhost@>@ list, bool &out any) {
+    for (uint i = 0; i < list.Length; i++) {
+        auto g = list[i];
+        if (g is null || g.instId == 0) continue;
+        any = true;
+        bool cur = g_specActive && g_specInstId == g.instId;
+        bool live = CamTarget_GhostHasVis(g);
+        string label = (live ? "" : "\\$666") + g.DisplayName() + "  \\$888" + FormatTime(g.raceTime) + "##spec" + g.instId;
+        if (UI::MenuItem(label, "", cur)) {
+            if (cur) Spectate_Stop(); else Spectate_Start(g.instId);
+        }
+        if (!live && UI::IsItemHovered()) UI::SetTooltip("No playback right now (not started or finished)");
+    }
+}
+
+void DrawSpectateMenu() {
+    UI::Text("\\$888Spectate");
+    bool any = false;
+    DrawSpectateMenuRows(g_ghosts, any);
+    DrawSpectateMenuRows(g_engineGhosts, any);
+    if (!any) UI::Text("\\$888no ghosts loaded");
+    if (g_specActive) {
+        UI::Separator();
+        if (UI::MenuItem(Icons::EyeSlash + " Stop spectating##specmenu-stop")) Spectate_Stop();
+    }
+}
+
 void DrawScrubberWindow() {
     if (!Scrubber_GhostAlive()) { @g_scrubGhost = null; return; }
     if (InGameMenuOpen()) return;
@@ -138,8 +165,19 @@ void DrawScrubberWindow() {
     }
     if (UI::IsItemHovered()) {
         string specName = "";
-        if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.nickname + ")"; }
-        UI::SetTooltip(isSpec ? "Stop spectating" + specName : "Spectate this ghost");
+        if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.DisplayName() + ")"; }
+        UI::SetTooltip(isSpec ? "Stop spectating" + specName : "Spectate this ghost (right click: pick a ghost)");
+    }
+    // right click on the eye: pick any ghost to spectate
+    if (UI::BeginPopupContextItem("g2-spec-menu")) {
+        DrawSpectateMenu();
+        UI::EndPopup();
+    }
+    UI::SameLine();
+    if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(78, 0))) Spectate_CycleCameraType(false);
+    if (UI::IsItemHovered()) {
+        UI::SetTooltip("Spectator camera (click = next, right click = previous): Replay = engine camera clip, Follow = chase cam, Track = track cameras, Game = the game's own spectator camera controls");
+        if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
     }
     UI::SameLine();
     uint nMembers = locked ? Lock_Members().Length : 0;
@@ -147,7 +185,7 @@ void DrawScrubberWindow() {
     if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Unlock: control ghosts individually again" : "Lock all ghosts: this scrubber drives every ghost and keeps them in sync");
     UI::SameLine();
     UI::AlignTextToFramePadding();
-    UI::Text(pg.nickname + (locked ? "  \\$8f8" + Icons::Lock + " " + nMembers : "") + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
+    UI::Text(pg.DisplayName() + (locked ? "  \\$8f8" + Icons::Lock + " " + nMembers : "") + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
     if (t < 0) {
         UI::SameLine();
         if (CurrentRules() !is null) {

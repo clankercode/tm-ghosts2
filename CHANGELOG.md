@@ -2,6 +2,9 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+- 2026-09-08: Ghost and map names render through `Text::OpenplanetFormatCodes` (colours/bold instead of raw `$` codes) in the ghost list, scrubber, leaderboard and State tab; save filenames and log/source strings use the stripped name.
+- 2026-09-08: Right-click on the scrubber's eye opens a ghost picker (every loaded ghost, greyed when it has no playback right now, plus Stop spectating).
+- 2026-09-08: Spectator camera button on the scrubber (pack `ghosts2.cam type=`, export `SetCameraType`): Replay (0, the engine's camera clip), Follow (1, chase cam), Track (2, track cameras), Game (15, the game's own spectator camera controls). Mapping verified against the live camera-system id; a free-fly camera is still being looked for.
 - 2026-09-08: Stop spectating restarts you and the ghosts (setting Spectate → Restart when you stop spectating, default on). Root cause of the stuck camera: forcing the spectator makes the terminal's `CGameCtnMediaClipPlayer` play a spectator camera clip on the ghost, and clearing `ForceSpectator`/`SpectatorForcedTarget` never stops it; only a (re)spawn does (same as Ghosts++). Spectating a finished ghost is refused with a clearer message.
 - 2026-09-08: Scrubber shows/hides like Ghosts++ (settings Scrubber → Show during the race countdown / Auto-hide / Hide delay): visible while spectating, dragging, or during the countdown, otherwise for 1.5 s after the mouse was over its area (hovering the hidden strip brings it back); opens by itself for the first loaded ghost. Right-click toggles pause only on the time bar. With the lock on, the eye reflects whichever ghost is spectated.
 - 2026-09-08: Ghost lock is on by default (setting Scrubber → Lock all ghosts by default; the padlock is runtime state). Exports / pack `pause`, `seek`, `speed`, `resync` go through the lock too (a member's pause was being undone by the leader every frame).

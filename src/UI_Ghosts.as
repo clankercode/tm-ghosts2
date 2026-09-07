@@ -96,7 +96,7 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         auto pg = g_ghosts[i];
         UI::PushID("pg" + i);
         UI::TableNextRow();
-        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(pg.nickname);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(pg.DisplayName());
         UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(FormatTime(pg.raceTime));
         UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + pg.instId);
         UI::TableNextColumn(); UI::AlignTextToFramePadding();
@@ -152,7 +152,7 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         UI::PushID(idPrefix + i);
         int t = TimeCtl_GhostTime(pg);
         UI::AlignTextToFramePadding();
-        UI::Text(pg.nickname);
+        UI::Text(pg.DisplayName());
         UI::SameLine();
         UI::BeginDisabled(t < 0);
         bool scrubOpen = g_scrubGhost is pg;

@@ -9,7 +9,8 @@
 class LbEntry {
     uint rank;
     string login;
-    string name;
+    string name;       // display name, Openplanet UI format codes
+    string plainName;  // format codes stripped (source strings, logs, JSON)
     uint score;        // race time in ms
     string fileName;
     string url;
@@ -54,7 +55,8 @@ void LbFetchInner(uint offset) {
             LbEntry e;
             e.rank = info.Rank;
             e.login = info.Login;
-            e.name = Text::StripFormatCodes(string(info.DisplayName));
+            e.name = Text::OpenplanetFormatCodes(string(info.DisplayName));
+            e.plainName = Text::StripFormatCodes(string(info.DisplayName));
             e.score = info.Score;
             e.fileName = string(info.FileName);
             e.url = info.ReplayUrl;
@@ -96,7 +98,7 @@ void LbLoadInner(uint rank) {
     if (e is null) { SetStatus("Leaderboard entry #" + rank + " is not in the fetched list.", true, true); return; }
     auto rules = CurrentRules();
     if (rules is null || rules.DataFileMgr is null) { SetStatus("No DataFileMgr (solo-only surface).", true, true); return; }
-    string label = "#" + e.rank + " " + (e.name.Length > 0 ? e.name : e.login);
+    string label = "#" + e.rank + " " + (e.plainName.Length > 0 ? e.plainName : e.login);
     SetStatus("Downloading ghost " + label + " ...");
     auto task = rules.DataFileMgr.Ghost_Download(wstring(e.fileName), e.url);
     if (task is null) { SetStatus("Ghost_Download returned null for " + label, true, true); return; }
@@ -123,7 +125,7 @@ Json::Value@ Lb_ToJson() {
     for (uint i = 0; i < g_lbEntries.Length; i++) {
         auto e = g_lbEntries[i];
         auto eo = Json::Object();
-        eo["rank"] = e.rank; eo["login"] = e.login; eo["name"] = e.name; eo["score"] = e.score;
+        eo["rank"] = e.rank; eo["login"] = e.login; eo["name"] = e.plainName; eo["score"] = e.score;
         eo["fileName"] = e.fileName; eo["url"] = e.url;
         arr.Add(eo);
     }

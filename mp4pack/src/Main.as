@@ -43,6 +43,10 @@ namespace Ghosts2Mp4Pack {
             uint level = uint(args.Get("level", 4));
             return Ghosts2::LoadMedal(level) ? OkTrue() : Err("load rejected (busy or level not 1..4)");
         }
+        if (cmd == "cam") {
+            Ghosts2::SetCameraType(uint(args.Get("type", 0)));
+            return OkTrue();
+        }
         if (cmd == "lock") {
             Ghosts2::SetLockAll(bool(args.Get("all", true)));
             return OkTrue();

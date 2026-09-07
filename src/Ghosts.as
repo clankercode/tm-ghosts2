@@ -65,6 +65,8 @@ class PluginGhost {
     }
 
     MwId InstMwId() { return MwId(instId); }
+    // nickname with the game's $-format codes converted for Openplanet's UI (raw one kept for matching)
+    string DisplayName() { return Text::OpenplanetFormatCodes(nickname); }
 }
 
 // Engine ghosts currently in CTrackManiaRace.RaceGhosts, one PluginGhost per nod (state survives rescans).
@@ -136,7 +138,7 @@ void Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
         }
         g_ghosts.InsertLast(pg);
         Scrubber_AutoOpen(pg);
-        trace("Ghosts2: adopted race ghost " + pg.nickname + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
+        trace("Ghosts2: adopted race ghost " + pg.DisplayName() + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
     }
 }
 

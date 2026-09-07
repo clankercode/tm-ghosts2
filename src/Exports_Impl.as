@@ -77,6 +77,7 @@ namespace Ghosts2 {
     bool LoadLeaderboard(uint rank) { return Lb_Load(rank); }
 
     void SetLockAll(bool on) { Lock_Set(on); }
+    void SetCameraType(uint camType) { Spectate_SetCameraType(camType); }
 
     bool Remove(uint instId) {
         for (uint i = 0; i < g_ghosts.Length; i++) {
