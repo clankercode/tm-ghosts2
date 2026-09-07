@@ -19,7 +19,7 @@ uint S_MaxReAddAttempts = 5;
 [Setting category="Time control" name="Enable pause / seek / speed" description="Writes the ghost's StartTime in the engine's race-ghost record (script modes only). Turn off if a game update moves the structure."]
 bool S_TimeControl = true;
 
-[Setting category="Time control" name="Scrubber step (ms)" min=10 max=5000 description="Step size of the scrubber's back/forward buttons."]
+[Setting category="Time control" name="Scrubber step (ms)" min=10 max=5000 description="Step size of the scrubber's back/forward buttons at 1x speed; scales with playback speed (min 1 ms)."]
 uint S_ScrubStepMs = 100;
 
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]

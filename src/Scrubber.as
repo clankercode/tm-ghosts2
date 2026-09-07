@@ -61,7 +61,8 @@ void DrawScrubberWindow() {
 
     UI::BeginDisabled(!avail || t < 0);
     vec2 btn = vec2(34, 0);
-    int step = int(S_ScrubStepMs);
+    // Step scales with playback speed: ¼x → 25 ms, 1x → 100 ms, 2x → 200 ms; min 1 ms.
+    int step = Math::Max(1, int(float(S_ScrubStepMs) * pg.speed + 0.5f));
     if (UI::Button(Icons::StepBackward + "##sb", btn)) TimeCtl_Seek(pg, uint(Math::Max(0, t - step)));
     if (UI::IsItemHovered()) UI::SetTooltip("Back " + step + " ms");
     UI::SameLine();
