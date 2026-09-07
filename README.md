@@ -14,8 +14,8 @@ rather than the TM2020 ghost-clip manager.
     **save**, plus **Remove all** (`RaceGhost_RemoveAll`).
   - Shows `PlayerBestGhost` / `PlayerRecordedGhost` and toggles for the free engine ghosts
     (`IsBestRaceGhostVisible`, `MedalGhost_ShowGold/Silver/Bronze`).
-- **Playback tab** — one row per started ghost: scrubber / pause / speed / resync buttons on the
-  left, the name, the ghost's time over its race time, and state icons (eye = spectated, clock =
+- **Playback tab** — one row per started ghost: spectate / scrubber / pause / speed / resync buttons
+  on the left, the name, the ghost's time over its race time, and state icons (eye = spectated, clock =
   clock owned by Ghosts2, padlock = in the lock group) on the right. The top row toggles the lock
   and pauses, resumes or releases every started ghost at once.
 - **Load tab**

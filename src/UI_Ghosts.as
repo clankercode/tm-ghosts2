@@ -166,7 +166,7 @@ void DrawPlaybackTab() {
         return;
     }
     if (!UI::BeginTable("g2-playback", 4, UI::TableFlags::SizingStretchProp | UI::TableFlags::RowBg)) return;
-    UI::TableSetupColumn("Controls", UI::TableColumnFlags::WidthFixed, 176);
+    UI::TableSetupColumn("Controls", UI::TableColumnFlags::WidthFixed, 212);
     UI::TableSetupColumn("Ghost");
     UI::TableSetupColumn("Time", UI::TableColumnFlags::WidthFixed, 136);
     UI::TableSetupColumn("State", UI::TableColumnFlags::WidthFixed, 60);
@@ -195,6 +195,14 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         UI::TableNextRow();
 
         UI::TableNextColumn();
+        bool isSpec = g_specActive && g_specInstId != 0 && g_specInstId == pg.instId;
+        UI::BeginDisabled(pg.instId == 0 || (!isSpec && !CamTarget_GhostHasVis(pg)));
+        if (UI::Button((isSpec ? "\\$8f8" + Icons::Eye : Icons::EyeSlash) + "##spec")) {
+            if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
+        }
+        UI::EndDisabled();
+        if (UI::IsItemHovered()) UI::SetTooltip(isSpec ? "Stop spectating" : (CamTarget_GhostHasVis(pg) ? "Spectate this ghost" : "No playback right now (seek it back or restart)"));
+        UI::SameLine();
         UI::BeginDisabled(t < 0);
         bool scrubOpen = g_scrubGhost is pg;
         if (UI::Button((scrubOpen ? "\\$8f8" : "") + Icons::Sliders + "##scrub")) {
@@ -226,7 +234,6 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         CellTextRight(t < 0 ? "\\$888not started" : FormatTime(uint(t)) + " \\$888/ " + FormatTime(pg.raceTime));
 
         UI::TableNextColumn();
-        bool isSpec = g_specActive && g_specInstId != 0 && g_specInstId == pg.instId;
         string state = (isSpec ? "\\$8f8" + Icons::Eye + " " : "") + (pg.Controlled() ? "\\$8f8" + Icons::Clock + " " : "") + (locked && t >= 0 ? "\\$aaa" + Icons::Lock : "");
         if (state.Length > 0) {
             CellTextRight(state);
