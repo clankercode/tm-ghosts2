@@ -104,6 +104,15 @@ void DrawScrubberWindow() {
     UI::SameLine();
     UI::AlignTextToFramePadding();
     UI::Text(pg.nickname + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
+    if (t < 0) {
+        UI::SameLine();
+        if (CurrentRules() !is null) {
+            if (UI::Button(Icons::Play + " Respawn##g2-respawn", btn)) Race_RespawnLocal();
+            if (UI::IsItemHovered()) UI::SetTooltip("Ghosts start playing on your next spawn: unspawn + respawn the local player");
+        } else {
+            UI::Text("\\$888(starts when you respawn)");
+        }
+    }
     UI::SameLine(w - 44);
     if (UI::Button(Icons::Times + "##close", btn)) Scrubber_Close();
 

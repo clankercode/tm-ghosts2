@@ -95,3 +95,19 @@ uint ScriptGhostTime(CGameGhostScript@ g) {
     int t = g.Result.Time;
     return t < 0 ? 0 : uint(t);
 }
+
+// Script modes only: unspawn + respawn the local player (a RaceGhost_Add'ed ghost only starts on the next spawn).
+bool Race_RespawnLocal(uint delayMs = 1500) {
+    auto rules = CurrentRules();
+    if (rules is null) return false;
+    string login = GetLocalLogin();
+    for (uint i = 0; i < rules.Players.Length; i++) {
+        auto p = rules.Players[i];
+        if (p is null || p.User is null || string(p.User.Login) != login) continue;
+        rules.UnspawnPlayer(p);
+        rules.SpawnPlayer(p, 0, int(rules.Now) + int(delayMs));
+        return true;
+    }
+    return false;
+}
+

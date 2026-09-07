@@ -15,6 +15,11 @@ bool Spectate_Start(uint instId) {
     if (instId == 0) return false;
     auto ui = UiAll();
     if (ui is null) return false;
+    if (!CamTarget_GhostHasVis(Ghosts_FindByInstId(instId))) {
+        g_status = "Ghost has no playback yet: respawn (start the race) so it is spawned, then spectate.";
+        warn("Ghosts2: " + g_status);
+        return false;
+    }
 
     if (!g_specSaved) {
         g_specPrevTarget = ui.SpectatorForcedTarget.Value;

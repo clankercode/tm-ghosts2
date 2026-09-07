@@ -91,6 +91,13 @@ PluginGhost@ Ghosts_FindEngineByCtn(CGameCtnGhost@ g) {
 
 array<PluginGhost@> g_ghosts;
 string g_trackedMapUid = "";
+
+PluginGhost@ Ghosts_FindByInstId(uint instId) {
+    if (instId == 0) return null;
+    for (uint i = 0; i < g_ghosts.Length; i++) if (g_ghosts[i].instId == instId) return g_ghosts[i];
+    for (uint i = 0; i < g_engineGhosts.Length; i++) if (g_engineGhosts[i].instId == instId) return g_engineGhosts[i];
+    return null;
+}
 uint g_lastScan = 0;
 
 // --- mutations -------------------------------------------------------------
@@ -157,6 +164,7 @@ void Ghosts_Update() {
     if (uid != g_trackedMapUid) {
         if (g_ghosts.Length > 0) trace("map changed (" + g_trackedMapUid + " -> " + uid + "); dropping " + g_ghosts.Length + " retained ghost(s)");
         g_trackedMapUid = uid;
+        Spectate_Reset();
         Ghosts_ForgetAll();
         return;
     }

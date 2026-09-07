@@ -14,7 +14,8 @@ const uint CamId_None = 0x0ff00000;
 const uint64 O_CamSys_ForcedId = 0x4c;
 
 Dev::HookInfo@ g_camHook;
-uint g_camForcedId = CamId_None;
+uint g_camWantId = CamId_None;    // what Spectate asked for
+uint g_camForcedId = CamId_None;  // what the hook writes this frame (none while the ghost has no live playback)
 uint g_camHookWrites = 0;
 string g_camLastErr = "";
 
@@ -44,6 +45,7 @@ bool CamTarget_InstallHook() {
 }
 
 void CamTarget_RemoveHook() {
+    g_camWantId = CamId_None;
     g_camForcedId = CamId_None;
     if (g_camHook !is null) {
         Dev::Unhook(g_camHook);
@@ -54,8 +56,17 @@ void CamTarget_RemoveHook() {
 // Point the chase camera at a ghost instance id (0x0f00xxxx engine ghosts, 0x0fe0xxxx script instances).
 bool CamTarget_Set(uint instId) {
     if (!S_CameraHook) return false;
-    g_camForcedId = instId;
+    g_camWantId = instId;
     return g_camHook !is null;
+}
+
+// The camera can only follow a ghost whose playback record is started and not past its end (otherwise the
+// vehicle-vis entry does not exist and the camera is left with no target: an empty, drifting view).
+bool CamTarget_GhostHasVis(PluginGhost@ pg) {
+    if (pg is null) return false;
+    int t = TimeCtl_GhostTime(pg);
+    if (t < 0) return false;
+    return pg.raceTime == 0 || uint(t) <= pg.raceTime + 500;
 }
 
 // Called from the plugin's own Update(): Dev::Hook resolves the callback in the *calling* module, so the
@@ -64,9 +75,13 @@ bool CamTarget_Set(uint instId) {
 void CamTarget_Update() {
     if (!S_CameraHook) { if (g_camHook !is null) CamTarget_RemoveHook(); return; }
     if (g_camHook is null) CamTarget_InstallHook();
+    uint id = CamId_None;
+    if (g_camWantId != CamId_None && CamTarget_GhostHasVis(Ghosts_FindByInstId(g_camWantId))) id = g_camWantId;
+    g_camForcedId = id;
 }
 
 void CamTarget_Clear() {
+    g_camWantId = CamId_None;
     g_camForcedId = CamId_None;
 }
 

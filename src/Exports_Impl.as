@@ -112,16 +112,7 @@ namespace Ghosts2 {
 
     void ShowWindow(bool visible) { S_ShowWindow = visible; }
 
-    PluginGhost@ FindTracked(uint instId) {
-        if (instId == 0) return null;
-        for (uint i = 0; i < g_ghosts.Length; i++) {
-            if (g_ghosts[i].instId == instId) return g_ghosts[i];
-        }
-        for (uint i = 0; i < g_engineGhosts.Length; i++) {
-            if (g_engineGhosts[i].instId == instId) return g_engineGhosts[i];
-        }
-        return null;
-    }
+    PluginGhost@ FindTracked(uint instId) { return Ghosts_FindByInstId(instId); }
 
     int GetGhostTime(uint instId) { return TimeCtl_GhostTime(FindTracked(instId)); }
     bool Seek(uint instId, uint ghostTimeMs) { return TimeCtl_Seek(FindTracked(instId), ghostTimeMs); }

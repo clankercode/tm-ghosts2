@@ -64,6 +64,14 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
 
+## Camera target hook (classic race)
+
+In the classic campaign race (`CTrackManiaRace1P`) the engine never copies `SpectatorForcedTarget` into the camera, so
+"Spectate" only made the player a spectator while the chase cam stayed on their car. Ghosts2 hooks the camera
+target resolver (`CGameCameraSystem`, RVA 0xb44740) and writes the spectated ghost's instance id into the camera's
+forced-target slot (+0x4c) right before it is read; the engine clears that slot every frame, so a plain write never
+survives. Setting: **Spectate → Camera hook (classic race)**. Both hooks are removed on unload.
+
 ## Known limitations
 
 - **Playback control hooks engine build 2019-11-19_18_50** (`RaceGhostRecord_UpdatePlaybackTime` at
