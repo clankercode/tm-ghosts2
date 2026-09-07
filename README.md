@@ -64,6 +64,14 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
 
+## Leaderboard ghosts
+
+The Load tab fetches the map's leaderboard (zone from settings, default `World`, paged) and adds any record's ghost
+to the race. This is the game's own add-opponent flow: `ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid,
+"", zone, offset, count)` returns `CGameNaturalLeaderBoardInfoScript` entries with rank, name, score and a
+`FileName` + `ReplayUrl`; `DataFileMgr.Ghost_Download(FileName, ReplayUrl)` fetches the ghost, then
+`RaceGhost_Add`. Pack commands: `ghosts2.lb_fetch offset=`, `ghosts2.lb_list`, `ghosts2.load_lb rank=`.
+
 ## Camera target hook (classic race)
 
 In the classic campaign race (`CTrackManiaRace1P`) the engine never copies `SpectatorForcedTarget` into the camera, so
@@ -139,3 +147,10 @@ Verified against `~/Openplanet4/Openplanet.h` + `Openplanet4.json` (engine build
    (`Replays/Ghosts2/<name>.Replay.Gbx`); `Replay_Load` reads it back.
 5. Releasing a task result while holding its `CGameGhostScript@` keeps the ghost usable
    (medal/PB ghosts are added after `TaskResult_Release`).
+
+## Credits
+
+- **FortTM**: the leaderboard ghost flow (`MapLeaderBoard_GetPlayerList` argument convention with `MwId(0)`, an empty
+  context and a zone name; the `FileName`/`ReplayUrl` on each leaderboard entry; `Ghost_Download` taking them
+  directly), traced from what the game does when adding an opponent from the leaderboard dialog.
+- Ghosts++ (TM2020) for the feature set and UI this plugin imitates.

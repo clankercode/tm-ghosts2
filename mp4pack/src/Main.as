@@ -43,6 +43,16 @@ namespace Ghosts2Mp4Pack {
             uint level = uint(args.Get("level", 4));
             return Ghosts2::LoadMedal(level) ? OkTrue() : Err("load rejected (busy or level not 1..4)");
         }
+        if (cmd == "lb_fetch") {
+            uint offset = uint(args.Get("offset", 0));
+            return Ghosts2::LeaderboardFetch(offset) ? OkTrue() : Err("fetch rejected (busy)");
+        }
+        if (cmd == "lb_list") return Ok(Ghosts2::Leaderboard());
+        if (cmd == "load_lb") {
+            uint rank = uint(args.Get("rank", 0));
+            if (rank == 0) return Err("load_lb needs rank (from lb_list)");
+            return Ghosts2::LoadLeaderboard(rank) ? OkTrue() : Err("load rejected (busy, unknown rank, or no replay url)");
+        }
         if (cmd == "remove") {
             uint instId = uint(args.Get("instId", 0));
             if (instId == 0) return Err("remove needs instId");

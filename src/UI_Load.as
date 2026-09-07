@@ -25,6 +25,8 @@ void DrawLoadTab() {
     if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.Map_GetMultiAsyncLevelRecordGhost(mapUid, \\\"\\\", level 4/3/2/1 = author/gold/silver/bronze)");
 
     UI::Separator();
+    DrawLeaderboardSection(rules);
+    UI::Separator();
 
     if (!g_browseInit) Browse_Refresh();
 
@@ -65,3 +67,50 @@ void DrawLoadTab() {
     if (g_browseDirs.Length == 0 && g_browseFiles.Length == 0) UI::TextDisabled("(nothing here)");
     UI::EndChild();
 }
+
+// Leaderboard records -> ghost download -> RaceGhost_Add (flow credited to FortTM, see Leaderboard.as).
+void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
+    UI::AlignTextToFramePadding();
+    UI::Text("Leaderboard (" + Lb_Zone() + ")");
+    UI::SameLine();
+    UI::BeginDisabled(rules is null || g_lbBusy);
+    if (UI::Button(Icons::Globe + " Fetch")) Lb_Fetch(0);
+    if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid, \"\", zone, offset, count)");
+    UI::SameLine();
+    uint count = Math::Clamp(S_LeaderboardCount, 1, 100);
+    UI::BeginDisabled(g_lbOffset == 0 || g_lbEntries.Length == 0);
+    if (UI::Button(Icons::ChevronLeft + "##lb-prev")) Lb_Fetch(g_lbOffset >= count ? g_lbOffset - count : 0);
+    UI::EndDisabled();
+    UI::SameLine();
+    UI::BeginDisabled(g_lbEntries.Length < count);
+    if (UI::Button(Icons::ChevronRight + "##lb-next")) Lb_Fetch(g_lbOffset + count);
+    UI::EndDisabled();
+    UI::EndDisabled();
+    UI::SameLine();
+    UI::Text("\\$888" + (g_lbBusy ? "fetching ..." : g_lbStatus));
+
+    if (g_lbEntries.Length == 0) return;
+    bool stale = g_lbMapUid != CurrentMapUid();
+    if (stale) UI::Text("\\$fc4Fetched for another map - fetch again.");
+    if (UI::BeginTable("g2-lb", 4, UI::TableFlags::SizingFixedFit | UI::TableFlags::RowBg)) {
+        UI::TableSetupColumn("#", UI::TableColumnFlags::WidthFixed, 40);
+        UI::TableSetupColumn("Name", UI::TableColumnFlags::WidthFixed, 200);
+        UI::TableSetupColumn("Time", UI::TableColumnFlags::WidthFixed, 80);
+        UI::TableSetupColumn("", UI::TableColumnFlags::WidthFixed, 40);
+        UI::TableHeadersRow();
+        for (uint i = 0; i < g_lbEntries.Length; i++) {
+            auto e = g_lbEntries[i];
+            UI::TableNextRow();
+            UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + e.rank);
+            UI::TableNextColumn(); UI::Text(e.name.Length > 0 ? e.name : e.login);
+            UI::TableNextColumn(); UI::Text(FormatTime(e.score));
+            UI::TableNextColumn();
+            UI::BeginDisabled(stale || g_busy || rules is null || e.url.Length == 0);
+            if (UI::Button(Icons::PlusCircle + "##lb" + i)) Lb_Load(e.rank);
+            UI::EndDisabled();
+            if (UI::IsItemHovered()) UI::SetTooltip("DataFileMgr.Ghost_Download(FileName, ReplayUrl) then RaceGhost_Add");
+        }
+        UI::EndTable();
+    }
+}
+

@@ -4,6 +4,12 @@ bool S_ShowWindow = true;
 [Setting category="Loading" name="Replays folder" description="Blank = the game's own Replays folder (IO::FromUserGameFolder(\"Replays\"))."]
 string S_ReplaysFolder = "";
 
+[Setting category="Leaderboard" name="Zone" description="Leaderboard zone passed to MapLeaderBoard_GetPlayerList, e.g. World or a zone path"]
+string S_LeaderboardZone = "World";
+
+[Setting category="Leaderboard" name="Records per page" min=1 max=100]
+uint S_LeaderboardCount = 10;
+
 [Setting category="Loading" name="Show only .Replay.Gbx / .Ghost.Gbx" description="Uncheck to list every file in the folder."]
 bool S_FilterGhostFiles = true;
 

@@ -65,6 +65,17 @@ namespace Ghosts2 {
         return true;
     }
 
+    // Leaderboard: fetch a page (async; poll Leaderboard() until busy is false), then load by rank.
+    bool LeaderboardFetch(uint offset) {
+        if (g_lbBusy) return false;
+        Lb_Fetch(offset);
+        return true;
+    }
+
+    Json::Value@ Leaderboard() { return Lb_ToJson(); }
+
+    bool LoadLeaderboard(uint rank) { return Lb_Load(rank); }
+
     bool Remove(uint instId) {
         for (uint i = 0; i < g_ghosts.Length; i++) {
             if (g_ghosts[i].instId == instId) {
