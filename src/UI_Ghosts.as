@@ -53,12 +53,12 @@ void DrawRaceGhostsTable(CTrackManiaRace@ race, CTrackManiaRaceRules@ rules) {
         auto pg = Ghosts_FindByCtn(g);
         UI::PushID("rg" + i);
         UI::TableNextRow();
-        UI::TableNextColumn(); UI::Text("" + (i + 1));
-        UI::TableNextColumn(); UI::Text(string(g.GhostNickname));
-        UI::TableNextColumn(); UI::Text(FormatTime(g.RaceTime));
-        UI::TableNextColumn(); UI::Text("" + g.NbRespawns);
-        UI::TableNextColumn(); UI::Text("\\$888" + g.GhostLogin);
-        UI::TableNextColumn();
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + (i + 1));
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(string(g.GhostNickname));
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(FormatTime(g.RaceTime));
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + g.NbRespawns);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("\\$888" + g.GhostLogin);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding();
         if (pg is null) {
             auto eg = Ghosts_FindEngineByCtn(g);
             if (eg is null || eg.instId == 0) UI::TextDisabled("engine");
@@ -96,14 +96,14 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         auto pg = g_ghosts[i];
         UI::PushID("pg" + i);
         UI::TableNextRow();
-        UI::TableNextColumn(); UI::Text(pg.nickname);
-        UI::TableNextColumn(); UI::Text(FormatTime(pg.raceTime));
-        UI::TableNextColumn(); UI::Text("" + pg.instId);
-        UI::TableNextColumn();
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(pg.nickname);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(FormatTime(pg.raceTime));
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + pg.instId);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding();
         if (pg.gaveUp) UI::Text("\\$f44gave up");
         else if (pg.inRace) UI::Text("\\$8f8in race");
         else UI::Text("\\$fc4missing");
-        UI::TableNextColumn(); UI::Text("\\$888" + pg.source);
+        UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("\\$888" + pg.source);
         UI::TableNextColumn();
         UI::BeginDisabled(rules is null);
         bool isSpec = g_specActive && g_specInstId == pg.instId && pg.instId != 0;
