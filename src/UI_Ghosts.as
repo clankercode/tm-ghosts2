@@ -27,6 +27,8 @@ void DrawGhostsTab() {
     UI::Separator();
     DrawPluginGhostsTable(rules);
     UI::Separator();
+    DrawPlaybackControls();
+    UI::Separator();
     DrawEngineGhosts();
 }
 
@@ -129,7 +131,6 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
     }
     UI::EndTable();
     if (toRemove !is null) Ghosts_Remove(toRemove);
-    DrawPlaybackControls();
 }
 
 void DrawPlaybackControls() {
