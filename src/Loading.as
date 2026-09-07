@@ -131,6 +131,47 @@ void Load_PersonalBestCoro() {
     g_busy = false;
 }
 
+void Load_Medal(uint level) {
+    if (g_busy || level < 1 || level > 4) return;
+    startnew(CoroutineFuncUserdataString(Load_MedalCoro), "" + level);
+}
+
+void Load_MedalCoro(const string &in levelStr) {
+    uint level = Text::ParseUInt(levelStr);
+    g_busy = true;
+    LoadMedalInner(level);
+    g_busy = false;
+}
+
+void LoadMedalInner(uint level) {
+    auto rules = CurrentRules();
+    if (rules is null || rules.ScoreMgr is null) {
+        SetStatus("Cannot load medal: no ScoreMgr.", true, true);
+        return;
+    }
+    string uid = CurrentMapUid();
+    if (uid.Length == 0) {
+        SetStatus("No map loaded.", true, true);
+        return;
+    }
+    SetStatus("Requesting medal ghost (level " + level + ") ...");
+    auto task = rules.ScoreMgr.Map_GetMultiAsyncLevelRecordGhost(uid, "", level);
+    if (task is null) {
+        SetStatus("Map_GetMultiAsyncLevelRecordGhost returned null.", true, true);
+        return;
+    }
+    while (task.IsProcessing) yield();
+    if (task.HasSucceeded && task.Ghost !is null) {
+        if (Ghosts_Add(task.Ghost, "Medal " + level) !is null) SetStatus("Added medal ghost (level " + level + ").", true);
+        else SetStatus("RaceGhost_Add rejected the medal ghost.", true, true);
+    } else if (task.HasSucceeded) {
+        SetStatus("No medal ghost for level " + level + ".", true);
+    } else {
+        SetStatus("Medal ghost request failed: " + string(task.ErrorDescription), true, true);
+    }
+    rules.ScoreMgr.TaskResult_Release(task.Id);
+}
+
 void LoadPbInner() {
     auto rules = CurrentRules();
     if (rules is null) {

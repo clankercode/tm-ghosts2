@@ -19,6 +19,9 @@ rather than the TM2020 ghost-clip manager.
     overridable in settings) listing `*.Replay.Gbx` / `*.Ghost.Gbx`. Loading runs
     `DataFileMgr.Replay_Load` in a coroutine and adds every returned ghost to the race.
   - **Load my PB** via `ScoreMgr.Map_GetRecordGhost(localUser, mapUid, "")`.
+  - **Load author/gold/silver/bronze ghost** via `ScoreMgr.Map_GetMultiAsyncLevelRecordGhost`
+    (levels 4/3/2/1). Nadeo campaign maps only — TMX maps have no medal ghosts, so failures
+    and null ghosts notify.
 - **Spectate** — writes the ghost's instance `MwId` to `UIAll.SpectatorForcedTarget` (what
   Nadeo's `UISequences::SetReplayGhostFocus` does), optionally with `ForceSpectator` and
   `UISequence = EndRound`. Stopping restores the previous values.
@@ -26,7 +29,20 @@ rather than the TM2020 ghost-clip manager.
   phase transition, silently wiping plugin ghosts. Ghosts2 keeps the `CGameGhostScript@`
   handles and puts them back, rate limited, giving up after a few failed attempts so it can
   never end up in an add/remove fight with the mode script. The retained list is cleared on
-  map change.
+  map change. Removal detection queries each tracked instance (`RaceGhost_GetStartTime` /
+  `IsVisible`) — `RaceGhosts` is empty in script modes — and only treats an instance as
+  removed once it previously reported `startTime > 0` (a fresh add reports 0 until the
+  player starts).
+
+## Exports and MP4 command pack
+
+Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`,
+`RemoveAll`, `Spectate`, `StopSpectating`, `State`, and `ShowWindow` for other
+Openplanet scripts. The optional `ghosts2` pack (`mp4pack/`, plugin id `tm-ghosts2-mp4pack`,
+build with `mp4pack/build.sh`) exposes the same operations through
+`tm-mp4-control/tools/mp4call.py ghosts2.list` (subcommands: `state`, `load_replay`,
+`load_pb`, `load_medal`, `remove`, `remove_all`, `spectate`, `stop_spectating`,
+`show_window`).
 
 ## Build
 

@@ -11,7 +11,8 @@ class PluginGhost {
     bool displayAsPlayerBest = false;
     uint offsetMs = 0;
 
-    bool inRace = false;    // seen in CTrackManiaRace.RaceGhosts on the last scan
+    bool inRace = false;    // instance currently believed to be in the race
+    bool everStarted = false; // has reported startTime>0 at least once
     uint failedReAdds = 0;
     bool gaveUp = false;
 
@@ -43,6 +44,7 @@ PluginGhost@ Ghosts_Add(CGameGhostScript@ g, const string &in source, bool displ
         return null;
     }
     g_ghosts.InsertLast(pg);
+    pg.inRace = true;
     g_trackedMapUid = CurrentMapUid();
     return pg;
 }
@@ -56,7 +58,11 @@ bool Ghosts_PushToRace(PluginGhost@ pg) {
     } else {
         pg.instId = rules.RaceGhost_Add(pg.ghost, pg.displayAsPlayerBest).Value;
     }
-    return pg.instId != 0;
+    if (pg.instId != 0) {
+        pg.everStarted = false;  // fresh instance: not started until the player (re)spawns
+        return true;
+    }
+    return false;
 }
 
 void Ghosts_Remove(PluginGhost@ pg) {
@@ -97,27 +103,25 @@ void Ghosts_Update() {
     if (now - g_lastScan < S_ScanIntervalMs) return;
     g_lastScan = now;
 
-    auto race = CurrentRace();
     auto rules = CurrentRules();
-    if (race is null || rules is null) return;
+    if (rules is null) return;
 
-    // Match our ghosts against the live list. Consume matches so duplicates line up 1:1.
-    array<string> present;
-    for (uint i = 0; i < race.RaceGhosts.Length; i++) {
-        auto g = race.RaceGhosts[i];
-        if (g is null) continue;
-        present.InsertLast(GhostKey(string(g.GhostNickname), g.RaceTime));
-    }
+    // RaceGhosts is empty in script-driven modes. Query each tracked instance directly.
+    // A freshly added ghost reports startTime==0 && !visible until the player (re)starts,
+    // so only an instance that previously reported startTime>0 counts as removed.
     for (uint i = 0; i < g_ghosts.Length; i++) {
         auto pg = g_ghosts[i];
-        int idx = present.Find(pg.key);
-        if (idx >= 0) {
-            present.RemoveAt(idx);
-            pg.inRace = true;
-            pg.failedReAdds = 0;
-            pg.gaveUp = false;
-        } else {
+        if (pg.instId == 0) {
             pg.inRace = false;
+            continue;
+        }
+        bool visible = rules.RaceGhost_IsVisible(pg.InstMwId());
+        uint startTime = rules.RaceGhost_GetStartTime(pg.InstMwId());
+        if (visible || startTime > 0) {
+            if (startTime > 0) pg.everStarted = true;
+            pg.inRace = true;
+        } else {
+            pg.inRace = !pg.everStarted;
         }
     }
 

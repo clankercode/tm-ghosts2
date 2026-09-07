@@ -12,6 +12,18 @@ void DrawLoadTab() {
     if (g_busy) UI::Text("\\$fc4working ...");
     else UI::Text("\\$888" + g_status);
 
+    // Medal ghosts (Nadeo campaign maps; TMX maps have none - failures notify via SetStatus).
+    UI::BeginDisabled(rules is null || g_busy);
+    if (UI::Button(Icons::Trophy + " Load author ghost")) Load_Medal(4);
+    UI::SameLine();
+    if (UI::Button("Gold")) Load_Medal(3);
+    UI::SameLine();
+    if (UI::Button("Silver")) Load_Medal(2);
+    UI::SameLine();
+    if (UI::Button("Bronze")) Load_Medal(1);
+    UI::EndDisabled();
+    if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.Map_GetMultiAsyncLevelRecordGhost(mapUid, \\\"\\\", level 4/3/2/1 = author/gold/silver/bronze)");
+
     UI::Separator();
 
     if (!g_browseInit) Browse_Refresh();

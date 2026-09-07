@@ -1,0 +1,11 @@
+[meta]
+name     = "Ghosts2 Mp4Pack"
+author   = "XertroV"
+category = "Development"
+version  = "0.1.0"
+
+[script]
+#__DEFINES__
+module = "Ghosts2Mp4Pack"
+dependencies = ["tm-mp4-control", "tm-ghosts2"]
+timeout = 5000
