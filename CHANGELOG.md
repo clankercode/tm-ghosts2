@@ -2,6 +2,7 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+- 2026-09-08: Tooltips go through `AddSimpleTooltip` (`UI_Helpers.as`: wrapped text, explicit window width ≤ 400 px, snug for short messages); the camera tooltip lists one camera per line.
 - 2026-09-08: Playback rows have a spectate toggle (eye) too. Camera value 2 is labelled FreeCam (was Track).
 - 2026-09-08: Playback moved to its own tab as a table (controls left, name, time right-aligned, state icons) with a lock / pause-all / resume-all / release-all row; pack `show_window tab= x= y=` (exports `SelectTab`, `MoveWindow`) select a tab / move the window for scripted screenshots. First-use window position now accounts for the UI scale.
 - 2026-09-08: Ghost and map names render through `Text::OpenplanetFormatCodes` (colours/bold instead of raw `$` codes) in the ghost list, scrubber, leaderboard and State tab; save filenames and log/source strings use the stripped name.

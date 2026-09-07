@@ -67,7 +67,7 @@ void DrawRaceGhostsTable(CTrackManiaRace@ race, CTrackManiaRaceRules@ rules) {
             UI::BeginDisabled(rules is null);
             if (UI::Button(Icons::Times + "##rm")) Ghosts_Remove(pg);
             UI::EndDisabled();
-            if (UI::IsItemHovered()) UI::SetTooltip("RaceGhost_Remove");
+            AddSimpleTooltip("RaceGhost_Remove");
         }
         UI::PopID();
     }
@@ -108,24 +108,24 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         if (UI::Button(isSpec ? Icons::Eye + "##spec" : Icons::EyeSlash + "##spec")) {
             if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
         }
-        if (UI::IsItemHovered()) UI::SetTooltip(isSpec ? "Stop spectating" : "Spectate (SpectatorForcedTarget)");
+        AddSimpleTooltip(isSpec ? "Stop spectating" : "Spectate (SpectatorForcedTarget)");
         UI::SameLine();
         if (UI::Button(Icons::Refresh + "##readd")) {
             pg.gaveUp = false;
             pg.failedReAdds = 0;
             Ghosts_PushToRace(pg);
         }
-        if (UI::IsItemHovered()) UI::SetTooltip("Re-add now (RaceGhost_Add)");
+        AddSimpleTooltip("Re-add now (RaceGhost_Add)");
         UI::SameLine();
         UI::BeginDisabled(g_busy);
         UI::BeginDisabled(pg.ghost is null);
         if (UI::Button(Icons::FloppyO + "##save")) Save_Ghost(pg.ghost, SuggestedSaveName(pg));
         UI::EndDisabled();
         UI::EndDisabled();
-        if (UI::IsItemHovered()) UI::SetTooltip("Save as " + SuggestedSaveName(pg) + " (DataFileMgr.Replay_Save)");
+        AddSimpleTooltip("Save as " + SuggestedSaveName(pg) + " (DataFileMgr.Replay_Save)");
         UI::SameLine();
         if (UI::Button(Icons::Times + "##rm")) @toRemove = pg;
-        if (UI::IsItemHovered()) UI::SetTooltip("Remove from race and stop tracking");
+        AddSimpleTooltip("Remove from race and stop tracking");
         UI::EndDisabled();
         UI::PopID();
     }
@@ -144,7 +144,7 @@ void DrawPlaybackTab() {
     for (uint i = 0; i < members.Length; i++) if (!members[i].paused) anyPlaying = true;
 
     if (UI::Button((locked ? "\\$8f8" + Icons::Lock + " Locked" : Icons::Unlock + " Unlocked") + "##lockall", vec2(100, 0))) Lock_Set(!locked);
-    if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Every started ghost is driven together and kept in sync. Click to control ghosts individually." : "Ghosts are controlled individually. Click to lock them together.");
+    AddSimpleTooltip(locked ? "Every started ghost is driven together and kept in sync. Click to control ghosts individually." : "Ghosts are controlled individually. Click to lock them together.");
     UI::SameLine();
     UI::BeginDisabled(members.Length == 0);
     if (UI::Button((anyPlaying ? Icons::Pause + " Pause all" : Icons::Play + " Resume all") + "##allpp", vec2(110, 0))) {
@@ -154,7 +154,7 @@ void DrawPlaybackTab() {
     if (UI::Button(Icons::Undo + " Release all##allsync")) {
         for (uint i = 0; i < members.Length; i++) TimeCtl_Release(members[i]);
     }
-    if (UI::IsItemHovered()) UI::SetTooltip("Give every clock back to the game");
+    AddSimpleTooltip("Give every clock back to the game");
     UI::EndDisabled();
     UI::SameLine();
     UI::AlignTextToFramePadding();
@@ -201,27 +201,27 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
             if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
         }
         UI::EndDisabled();
-        if (UI::IsItemHovered()) UI::SetTooltip(isSpec ? "Stop spectating" : (CamTarget_GhostHasVis(pg) ? "Spectate this ghost" : "No playback right now (seek it back or restart)"));
+        AddSimpleTooltip(isSpec ? "Stop spectating" : (CamTarget_GhostHasVis(pg) ? "Spectate this ghost" : "No playback right now (seek it back or restart)"));
         UI::SameLine();
         UI::BeginDisabled(t < 0);
         bool scrubOpen = g_scrubGhost is pg;
         if (UI::Button((scrubOpen ? "\\$8f8" : "") + Icons::Sliders + "##scrub")) {
             if (scrubOpen) Scrubber_Close(); else Scrubber_Open(pg);
         }
-        if (UI::IsItemHovered()) UI::SetTooltip(scrubOpen ? "Close the scrubber" : "Open the scrubber (seek / step / speed)");
+        AddSimpleTooltip(scrubOpen ? "Close the scrubber" : "Open the scrubber (seek / step / speed)");
         UI::SameLine();
         if (UI::Button(pg.paused ? Icons::Play + "##pp" : Icons::Pause + "##pp")) Ctl_SetPaused(pg, !pg.paused);
-        if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
+        AddSimpleTooltip(pg.paused ? "Resume" : "Pause");
         UI::SameLine();
         if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) Ctl_SetSpeed(pg, NextSpeed(pg.speed));
         if (UI::IsItemHovered()) {
-            UI::SetTooltip("Playback speed (click = faster, right click = slower)");
+            AddSimpleTooltip("Playback speed (click = faster, right click = slower)");
             if (UI::IsMouseClicked(UI::MouseButton::Right)) Ctl_SetSpeed(pg, PrevSpeed(pg.speed));
         }
         UI::SameLine();
         UI::BeginDisabled(!pg.Controlled());
         if (UI::Button(Icons::Undo + "##sync")) Ctl_Release(pg);
-        if (UI::IsItemHovered()) UI::SetTooltip("Give the clock back to the game");
+        AddSimpleTooltip("Give the clock back to the game");
         UI::EndDisabled();
         UI::EndDisabled();
 
@@ -237,7 +237,7 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         string state = (isSpec ? "\\$8f8" + Icons::Eye + " " : "") + (pg.Controlled() ? "\\$8f8" + Icons::Clock + " " : "") + (locked && t >= 0 ? "\\$aaa" + Icons::Lock : "");
         if (state.Length > 0) {
             CellTextRight(state);
-            if (UI::IsItemHovered()) UI::SetTooltip((isSpec ? "Spectating\n" : "") + (pg.Controlled() ? "Clock owned by Ghosts2\n" : "") + (locked && t >= 0 ? "In the lock group" : ""));
+            AddSimpleTooltip((isSpec ? "Spectating\n" : "") + (pg.Controlled() ? "Clock owned by Ghosts2\n" : "") + (locked && t >= 0 ? "In the lock group" : ""));
         }
         UI::PopID();
     }

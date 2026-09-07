@@ -98,7 +98,7 @@ void DrawSpectateMenuRows(array<PluginGhost@>@ list, bool &out any) {
         if (UI::MenuItem(label, "", cur)) {
             if (cur) Spectate_Stop(); else Spectate_Start(g.instId);
         }
-        if (!live && UI::IsItemHovered()) UI::SetTooltip("No playback right now (not started or finished)");
+        if (!live) AddSimpleTooltip("No playback right now (not started or finished)");
     }
 }
 
@@ -136,23 +136,23 @@ void DrawScrubberWindow() {
     // Step scales with playback speed: ¼x → 25 ms, 1x → 100 ms, 2x → 200 ms; min 1 ms.
     int step = Math::Max(1, int(float(S_ScrubStepMs) * pg.speed + 0.5f));
     if (UI::Button(Icons::StepBackward + "##sb", btn)) Ctl_Seek(pg, uint(Math::Max(0, t - step)));
-    if (UI::IsItemHovered()) UI::SetTooltip("Back " + step + " ms");
+    AddSimpleTooltip("Back " + step + " ms");
     UI::SameLine();
     if (UI::Button((pg.paused ? Icons::Play : Icons::Pause) + "##pp", btn)) Ctl_SetPaused(pg, !pg.paused);
-    if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
+    AddSimpleTooltip(pg.paused ? "Resume" : "Pause");
     UI::SameLine();
     if (UI::Button(Icons::StepForward + "##sf", btn)) Ctl_Seek(pg, uint(t + step));
-    if (UI::IsItemHovered()) UI::SetTooltip("Forward " + step + " ms");
+    AddSimpleTooltip("Forward " + step + " ms");
     UI::SameLine();
     if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) Ctl_SetSpeed(pg, NextSpeed(pg.speed));
     if (UI::IsItemHovered()) {
-        UI::SetTooltip("Playback speed (click = faster, right click = slower)");
+        AddSimpleTooltip("Playback speed (click = faster, right click = slower)");
         if (UI::IsMouseClicked(UI::MouseButton::Right)) Ctl_SetSpeed(pg, PrevSpeed(pg.speed));
     }
     UI::SameLine();
     UI::BeginDisabled(!pg.Controlled());
     if (UI::Button(Icons::Undo + "##sync", btn)) Ctl_Release(pg);
-    if (UI::IsItemHovered()) UI::SetTooltip("Give the clock back to the game (ghost snaps to the player's race time)");
+    AddSimpleTooltip("Give the clock back to the game (ghost snaps to the player's race time)");
     UI::EndDisabled();
     UI::EndDisabled();
     UI::SameLine();
@@ -166,7 +166,7 @@ void DrawScrubberWindow() {
     if (UI::IsItemHovered()) {
         string specName = "";
         if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.DisplayName() + ")"; }
-        UI::SetTooltip((isSpec ? "Stop spectating" + specName : "Spectate this ghost") + "\\nright click to change");
+        AddSimpleTooltip((isSpec ? "Stop spectating" + specName : "Spectate this ghost") + "\nright click to change");
     }
     // right click on the eye: pick any ghost to spectate
     if (UI::BeginPopupContextItem("g2-spec-menu")) {
@@ -176,13 +176,13 @@ void DrawScrubberWindow() {
     UI::SameLine();
     if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(96, 0))) Spectate_CycleCameraType(false);
     if (UI::IsItemHovered()) {
-        UI::SetTooltip("Spectator camera (click = next, right click = previous): Replay = engine camera clip, Follow = chase cam, FreeCam = free camera (cam 7 in TM2020 terms), Game = the game's own spectator camera controls");
+        AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls");
         if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
     }
     UI::SameLine();
     uint nMembers = locked ? Lock_Members().Length : 0;
     if (UI::Button((locked ? "\\$8f8" + Icons::Lock : Icons::Unlock) + "##lock", btn)) Lock_Set(!locked);
-    if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Unlock: control ghosts individually again" : "Lock all ghosts: this scrubber drives every ghost and keeps them in sync");
+    AddSimpleTooltip(locked ? "Unlock: control ghosts individually again" : "Lock all ghosts: this scrubber drives every ghost and keeps them in sync");
     UI::SameLine();
     UI::AlignTextToFramePadding();
     UI::Text(pg.DisplayName() + (locked ? "  \\$8f8" + Icons::Lock + " " + nMembers : "") + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
@@ -190,7 +190,7 @@ void DrawScrubberWindow() {
         UI::SameLine();
         if (CurrentRules() !is null) {
             if (UI::Button(Icons::Play + " Respawn##g2-respawn", btn)) Race_RespawnLocal();
-            if (UI::IsItemHovered()) UI::SetTooltip("Ghosts start playing on your next spawn: unspawn + respawn the local player");
+            AddSimpleTooltip("Ghosts start playing on your next spawn: unspawn + respawn the local player");
         } else {
             UI::Text("\\$888(starts when you respawn)");
         }

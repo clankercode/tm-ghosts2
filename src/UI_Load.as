@@ -7,7 +7,7 @@ void DrawLoadTab() {
     UI::BeginDisabled(rules is null || g_busy);
     if (UI::Button(Icons::Download + " Load my PB")) Load_PersonalBest();
     UI::EndDisabled();
-    if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.Map_GetRecordGhost(localUser, mapUid, \"\")");
+    AddSimpleTooltip("ScoreMgr.Map_GetRecordGhost(localUser, mapUid, \"\")");
     UI::SameLine();
     if (g_busy) UI::Text("\\$fc4working ...");
     else UI::Text("\\$888" + g_status);
@@ -22,7 +22,7 @@ void DrawLoadTab() {
     UI::SameLine();
     if (UI::Button("Bronze")) Load_Medal(1);
     UI::EndDisabled();
-    if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.Map_GetMultiAsyncLevelRecordGhost(mapUid, \\\"\\\", level 4/3/2/1 = author/gold/silver/bronze)");
+    AddSimpleTooltip("ScoreMgr.Map_GetMultiAsyncLevelRecordGhost(mapUid, \\\"\\\", level 4/3/2/1 = author/gold/silver/bronze)");
 
     UI::Separator();
     DrawLeaderboardSection(rules);
@@ -57,7 +57,7 @@ void DrawLoadTab() {
     for (uint i = 0; i < g_browseFiles.Length; i++) {
         UI::PushID("f" + i);
         if (UI::Button(Icons::PlusCircle + "##load")) Load_ReplayFile(g_browseFiles[i]);
-        if (UI::IsItemHovered()) UI::SetTooltip("DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
+        AddSimpleTooltip("DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
         UI::SameLine();
         UI::AlignTextToFramePadding();
         UI::Text(BaseName(g_browseFiles[i]));
@@ -75,7 +75,7 @@ void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
     UI::SameLine();
     UI::BeginDisabled(rules is null || g_lbBusy);
     if (UI::Button(Icons::Globe + " Fetch")) Lb_Fetch(0);
-    if (UI::IsItemHovered()) UI::SetTooltip("ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid, \"\", zone, offset, count)");
+    AddSimpleTooltip("ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid, \"\", zone, offset, count)");
     UI::SameLine();
     uint count = Math::Clamp(S_LeaderboardCount, 1, 100);
     UI::BeginDisabled(g_lbOffset == 0 || g_lbEntries.Length == 0);
@@ -108,7 +108,7 @@ void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
             UI::BeginDisabled(stale || g_busy || rules is null || e.url.Length == 0);
             if (UI::Button(Icons::PlusCircle + "##lb" + i)) Lb_Load(e.rank);
             UI::EndDisabled();
-            if (UI::IsItemHovered()) UI::SetTooltip("DataFileMgr.Ghost_Download(FileName, ReplayUrl) then RaceGhost_Add");
+            AddSimpleTooltip("DataFileMgr.Ghost_Download(FileName, ReplayUrl) then RaceGhost_Add");
         }
         UI::EndTable();
     }
