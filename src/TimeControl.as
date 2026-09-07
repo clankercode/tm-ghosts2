@@ -217,6 +217,23 @@ ClockEntry@ TimeCtl_Own(PluginGhost@ pg) {
 }
 
 // Gives the clock back to the engine (the ghost snaps to the player's race time, as the engine intends).
+// Drop every owned clock (map change / forget-all): a stale entry would hijack whatever record the engine later
+// allocates at the same address.
+void TimeCtl_ReleaseAll() {
+    g_clock.RemoveRange(0, g_clock.Length);
+}
+
+// Garbage-collect entries that no tracked ghost owns any more (ghost dropped without Release).
+void TimeCtl_CollectOrphans() {
+    for (int i = int(g_clock.Length) - 1; i >= 0; i--) {
+        uint64 rec = g_clock[i].rec;
+        bool owned = false;
+        for (uint j = 0; j < g_ghosts.Length && !owned; j++) owned = g_ghosts[j].clockRec == rec;
+        for (uint j = 0; j < g_engineGhosts.Length && !owned; j++) owned = g_engineGhosts[j].clockRec == rec;
+        if (!owned) g_clock.RemoveAt(uint(i));
+    }
+}
+
 void TimeCtl_Release(PluginGhost@ pg) {
     if (pg is null) return;
     pg.paused = false;
@@ -276,4 +293,5 @@ void TimeCtl_Update(float dt) {
     if (g_clockHook is null) return;
     if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts);
     if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts);
+    if (g_clock.Length > 0) TimeCtl_CollectOrphans();
 }

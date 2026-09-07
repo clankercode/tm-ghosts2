@@ -204,6 +204,7 @@ void Ghosts_RemoveAll() {
 // Drop our bookkeeping without touching the race (used on map change).
 void Ghosts_ForgetAll() {
     Spectate_Reset();
+    TimeCtl_ReleaseAll();
     g_ghosts.RemoveRange(0, g_ghosts.Length);
     g_engineGhosts.RemoveRange(0, g_engineGhosts.Length);
 }
