@@ -41,8 +41,8 @@ case "$mode" in
   release)
     out="$slug-$version.op"
     rm -f "$out"
-    (cd src && 7z a "../$out" ./* >/dev/null)
-    7z a "$out" info.toml >/dev/null
+    (cd src && 7z a -tzip "../$out" ./* >/dev/null)
+    7z a -tzip "$out" info.toml >/dev/null
     echo "== built $out"
     ;;
   *) echo "usage: $0 [dev|release]"; exit 2;;
