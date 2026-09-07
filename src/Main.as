@@ -1,14 +1,23 @@
-// Ghosts2: ManiaPlanet 4 (TM2) port of the Ghosts++ ideas: list, load, unload, spectate and scrub ghosts.
-// Early skeleton: state window only.
-
-[Setting hidden]
-bool S_ShowWindow = true;
+// Ghosts2: ManiaPlanet 4 (TM2) port of the Ghosts++ ideas: list, load, remove and spectate ghosts.
 
 const string PluginName = Meta::ExecutingPlugin().Name;
 const string MenuTitle = "\\$dd5" + Icons::HandPointerO + "\\$z " + PluginName;
 
 void Main() {
     trace("Ghosts2 loaded");
+}
+
+void Update(float dt) {
+    Ghosts_Update();
+}
+
+void OnDestroyed() { Cleanup(); }
+void OnDisabled() { Cleanup(); }
+
+void Cleanup() {
+    // Leave the race as we found it: restore the UI config, drop our bookkeeping.
+    Spectate_Stop();
+    Ghosts_ForgetAll();
 }
 
 void RenderMenu() {
@@ -19,40 +28,34 @@ void RenderMenu() {
 
 void RenderInterface() {
     if (!S_ShowWindow) return;
-    UI::SetNextWindowSize(520, 300, UI::Cond::FirstUseEver);
-    UI::SetNextWindowPos(int(Display::GetWidth() - 540), 40, UI::Cond::FirstUseEver);
+    UI::SetNextWindowSize(640, 420, UI::Cond::FirstUseEver);
+    UI::SetNextWindowPos(int(Display::GetWidth() - 660), 40, UI::Cond::FirstUseEver);
     if (UI::Begin(MenuTitle, S_ShowWindow)) {
-        DrawStateWindow();
+        if (UI::BeginTabBar("g2-tabs")) {
+            if (UI::BeginTabItem("Ghosts")) { DrawGhostsTab(); UI::EndTabItem(); }
+            if (UI::BeginTabItem("Load")) { DrawLoadTab(); UI::EndTabItem(); }
+            if (UI::BeginTabItem("State")) { DrawStateTab(); UI::EndTabItem(); }
+            UI::EndTabBar();
+        }
     }
     UI::End();
 }
 
-string TypeName(CMwNod@ nod) {
-    if (nod is null) return "null";
-    auto ty = Reflection::TypeOf(nod);
-    return ty is null ? "?" : ty.Name;
-}
-
-void DrawStateWindow() {
-    auto app = cast<CGameManiaPlanet>(GetApp());
+void DrawStateTab() {
+    auto app = App();
     UI::Text("PlaygroundScript: " + TypeName(app.PlaygroundScript));
     UI::Text("CurrentPlayground: " + TypeName(app.CurrentPlayground));
-    if (app.RootMap !is null) UI::Text("Map: " + string(app.RootMap.MapName) + " (" + app.RootMap.MapInfo.MapUid + ")");
-    auto race = cast<CTrackManiaRace>(app.CurrentPlayground);
-    if (race is null) {
-        UI::Text("Not in a TrackMania race.");
-        return;
-    }
+    auto map = CurrentMap();
+    UI::Text("Map: " + (map is null ? "\\$888null" : string(map.MapName) + "  \\$888" + CurrentMapUid()));
+    auto rules = CurrentRules();
+    UI::Text("DataFileMgr: " + (rules is null ? "\\$888n/a" : TypeName(rules.DataFileMgr)));
+    UI::Text("ScoreMgr: " + (rules is null ? "\\$888n/a" : TypeName(rules.ScoreMgr)));
+    UI::Text("UIAll: " + TypeName(UiAll()));
+    UI::Text("Local login: " + GetLocalLogin() + "  \\$888user id " + LocalUserId().Value);
     UI::Separator();
-    UI::Text("Race ghosts: " + race.RaceGhosts.Length);
-    for (uint i = 0; i < race.RaceGhosts.Length; i++) {
-        auto g = race.RaceGhosts[i];
-        if (g is null) continue;
-        UI::Text(Text::Format("%02d. ", i + 1) + string(g.GhostNickname) + "  " + Time::Format(g.RaceTime) + "  " + g.GhostLogin);
-    }
-    auto ctnPg = cast<CGameCtnPlayground>(app.CurrentPlayground);
-    if (ctnPg !is null) {
-        UI::Text("PlayerBestGhost: " + (ctnPg.PlayerBestGhost is null ? "null" : Time::Format(ctnPg.PlayerBestGhost.RaceTime)));
-        UI::Text("PlayerRecordedGhost: " + (ctnPg.PlayerRecordedGhost is null ? "null" : Time::Format(ctnPg.PlayerRecordedGhost.RaceTime)));
-    }
+    UI::Text("Spectating: " + (g_specActive ? "\\$8f8inst " + g_specInstId : "\\$888no"));
+    UI::Text("Tracked map uid: \\$888" + g_trackedMapUid);
+    UI::Text("Status: \\$888" + g_status);
+    UI::Separator();
+    if (UI::Button("Open settings")) Meta::OpenSettings(Meta::ExecutingPlugin());
 }
