@@ -163,7 +163,10 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
         UI::SameLine();
         if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) TimeCtl_SetSpeed(pg, NextSpeed(pg.speed));
-        if (UI::IsItemHovered()) UI::SetTooltip("Playback speed (click to cycle)");
+        if (UI::IsItemHovered()) {
+            UI::SetTooltip("Playback speed (click = faster, right click = slower)");
+            if (UI::IsMouseClicked(UI::MouseButton::Right)) TimeCtl_SetSpeed(pg, PrevSpeed(pg.speed));
+        }
         UI::SameLine();
         UI::BeginDisabled(!pg.Controlled());
         if (UI::Button(Icons::Undo + "##sync")) TimeCtl_Release(pg);

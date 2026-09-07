@@ -36,11 +36,23 @@ string SpeedLabel(float speed) {
 }
 
 float NextSpeed(float speed) {
+    if (speed < 0.1) return 0.1;
+    if (speed < 0.25) return 0.25;
     if (speed < 0.5) return 0.5;
     if (speed < 1.0) return 1.0;
     if (speed < 2.0) return 2.0;
     if (speed < 4.0) return 4.0;
-    return 0.25;
+    return 0.01;
+}
+
+float PrevSpeed(float speed) {
+    if (speed > 4.0) return 4.0;
+    if (speed > 2.0) return 2.0;
+    if (speed > 1.0) return 1.0;
+    if (speed > 0.5) return 0.5;
+    if (speed > 0.25) return 0.25;
+    if (speed > 0.1) return 0.1;
+    return 4.0;
 }
 
 void DrawScrubberWindow() {
@@ -73,7 +85,10 @@ void DrawScrubberWindow() {
     if (UI::IsItemHovered()) UI::SetTooltip("Forward " + step + " ms");
     UI::SameLine();
     if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) TimeCtl_SetSpeed(pg, NextSpeed(pg.speed));
-    if (UI::IsItemHovered()) UI::SetTooltip("Playback speed (click to cycle)");
+    if (UI::IsItemHovered()) {
+        UI::SetTooltip("Playback speed (click = faster, right click = slower)");
+        if (UI::IsMouseClicked(UI::MouseButton::Right)) TimeCtl_SetSpeed(pg, PrevSpeed(pg.speed));
+    }
     UI::SameLine();
     UI::BeginDisabled(!pg.Controlled());
     if (UI::Button(Icons::Undo + "##sync", btn)) TimeCtl_Release(pg);
