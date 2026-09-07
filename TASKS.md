@@ -19,10 +19,10 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 ## Tooling / infra
 - [x] tm-mp4-control: socket control plugin (menus, click, titles, play_map, campaigns, race, ghosts, mem, findu32(deep), race_ghost_add/remove/query, spectate)
 - [x] tools: mp4call.py, memdump.py, structdump.py, typedb.py, mp-restart/screenshot/log/set-devmode, mp-play-campaign-map.sh
-- [~] Ghidra headless analysis of ManiaPlanet.exe: local ~/re/mp4 (systemd unit, 24G heap, AddressTableAnalyzer disabled after 8G OOM) + x-alpha remote (grok helper) → GhidraMCP :18743 → research/mp4/Ghidra.md
+- [~] Ghidra headless analysis of ManiaPlanet.exe: local runs OOM-killed even at 24G (game holds the RAM) → x-alpha only (grok helper, 32G heap) → GhidraMCP :18743 via ssh tunnel → research/mp4/Ghidra.md
 - [ ] tm-mp4-control: pack registry (`Packs.as`) + shared funcdef (grok helper)
 - [ ] Log LSP gaps: void `UI::BeginTabBar` in `if` (logged 2026-09-07); typedb needs `OpenplanetNext.json` name for MP4
 
 ## Research notes to write (research/mp4/)
-- [ ] RaceGhost runtime: script-mode vs classic-mode findings, GhostInstId format (0x0fe0xxxx), holder structs at CTrackManiaRaceNew+0x1d0, remove/query semantics
+- [x] RaceGhost runtime (2026-09-07-RaceGhost-Runtime.md; keep appending): script-mode vs classic-mode findings, GhostInstId format (0x0fe0xxxx), holder structs at CTrackManiaRaceNew+0x1d0, remove/query semantics
 - [x] GppApiMapping-TM2020-vs-MP4.md (helper), TM2-SoloGhostScripts.md (opus subagent)
