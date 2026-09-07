@@ -14,6 +14,8 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 - [ ] Ghost offset (forward seek) via remove + `RaceGhost_AddWithOffset(ghost, ms)` + `SpawnPlayer` (verified: offset = seek into the replay, same startTime) — cheap partial scrubber for script modes
 - [ ] Spectate camera choice: `SpectatorForceCameraType` 0 close chase, 1 behind car, 2/3 track cam (verified)
 - [x] Save ghost: `DataFileMgr.Replay_Save("Ghosts2/x.Replay.Gbx", RootMap, ghostScript)` verified in-game (writes under Replays/); no `Ghost_Save` in MP4
+- [ ] **Playback smoothness (user report 2026-09-08): paused ghosts stutter; scrubbing makes the car flick between the pre-scrub position and the target.** Needs more RE of the vis/sample path (`RaceGhostRecord_ApplyGhostSamplesToVis` 0x140848d80, `rec+0x1c` cursor, vis smoothing) until it is as smooth as Ghosts++ (grok helper on the static side, per-frame position trace on the runtime side)
+- [ ] Playback UI (user request 2026-09-08): `UI::AlignTextToFramePadding()` before the row text; keep the time readout from sitting left of the buttons (it flickers while scrubbing); scrubber on its own line — better: a small popup scrubber like Ghosts++
 - [ ] Ghost list extras: distance/delta to player, per-ghost visibility toggle (`RaceGhost_IsVisible` is read-only?), colours
 - [x] Exports (`Ghosts2::*`) + tm-mp4-control command pack `ghosts2.*` (grok helper) — user request 2026-09-07; smoke-tested in-game 2026-09-07 (`packs` → ghosts2, `ghosts2.load_medal level=4`, list/state/spectate OK; pack must not re-declare dependency imports)
 - [ ] Settings polish, window layout, README screenshots; release build + version bump
