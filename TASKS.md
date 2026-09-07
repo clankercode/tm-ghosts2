@@ -28,11 +28,30 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 - [x] **Camera stuck on the ghost after stop with Follow / FreeCam** (user report 2026-09-08, third camera bug): with `SpectatorForceCameraType` 1 / 2 / 15 the spectator code sets the camera system's *auto* target (`camsys+0x48`) to the ghost id; clearing the UI config and the respawn leave it there (the Replay clip path re-targets the local vehicle when the clip stops, which is why type 0 worked). Fix: `CamTarget_ResetAfterStop` writes `+0x48 = 0` (local vehicle) at stop and polls through the respawn window (`CamSys_Ptr`: playground `+0xa00` terminals → terminal `+0x30`). Verified via pack: Follow spectate → stop: `+0x48` 0x0fe00002 → 0 within 0.3 s, stays 0 after the respawn, camera on the car
 - [x] Non-respawn stop-spectate (2026-09-08): `Spectate_DropClipLater` releases `terminal+0xa8` (guard: nod, refcount 2..64; `nod+0x10` per grok's research 6a12f69) then zeroes the slot, **3 frames after** the UI config restore — a same-frame drop was re-picked by `Playground_PickTerminalCamClip` via the spectator path (refcount back to 3) because the script setters reach the engine a frame later. Verified via pack (`stop_spectating respawn=false`): Replay clip: `+0xa8/+0x100` → 0, clip player `+0x2b0` → 0, camsys `+0x18c` → 0, cam 0x12, RaceStartTime unchanged; Follow: no clip, auto target reset only. Setting "Restart when you stop spectating" off selects it (default stays on)
 - [x] Follow camera Cam 1/2/3 (user request 2026-09-08): vehicle cam ids 0x12 / 0x13 / 0x14 (0x15 internal facing back, 8 / 9 chase variants) verified by forcing `camsys+0x180` while Follow-spectating; forced Follow (`cam type 0xe`) hard-codes 0x12 in `FUN_140e462a0`, the terminal's own Follow reads the key choice at `CGameTerminal+0x44`. Override written from the resolver hook (runs before `CameraSystem_UpdateFrame` reads `+0x180`). Scrubber 20% wider
+- [x] **Added ghosts never start** (user bug 2026-09-08): `RaceGhost_Add` only queues the ghost in the race's pending add list (`race+0x1d0`); the engine builds its playback record in `RaceGhost_RebuildRecords_ClassicAndScript` at the next spawn, so a ghost added mid-run stayed invisible with `ghostTime = -1` forever, and the `inRace = !everStarted` rule meant the auto re-add never touched it either. Fix: `Ghosts_RequestSpawnForAdd` / `Ghosts_PumpSpawnForAdd` restart the run 400 ms after the last user-initiated add (setting Loading -> Restart the run when a ghost is added, default on; the mode-driven auto re-add deliberately does not request one), and an instance found in neither add list is now marked `inRace = false` so it gets re-added. Verified live 2026-09-08: `ghosts2.load_lb rank=4` -> status "Restarting the run so the new ghost(s) start", new instance gets a record and plays
+- [x] Scrubber hidden with the Openplanet overlay (user bug 2026-09-08): it drew from `RenderInterface()`; moved to `Render()` so it stays up while driving
 - [ ] Scrubber polish: keyboard shortcuts, remember position (step size setting and the camera button are done)
 - [ ] Ghost list extras: distance/delta to player, per-ghost visibility toggle (`RaceGhost_IsVisible` is read-only?), colours
 - [x] Exports (`Ghosts2::*`) + tm-mp4-control command pack `ghosts2.*` (grok helper) — user request 2026-09-07; smoke-tested in-game 2026-09-07 (`packs` → ghosts2, `ghosts2.load_medal level=4`, list/state/spectate OK; pack must not re-declare dependency imports)
 - [x] README screenshots (`tools/readme-shots.sh` → `docs/img/`), release build `tm-ghosts2-0.2.0.op`, version 0.2.0 — 2026-09-08
 - [ ] Ghosts tab: `CTrackManiaRace.RaceGhosts` reads empty in script modes while the adopted ghosts are in the race (the script API array only mirrors the classic race list?) — show the adopted list count instead
+
+## Trackmania Turbo support (started 2026-09-08)
+
+Code that diverges uses `#if MP4` / `#if TURBO` (Openplanet's own defines; Turbo also defines `MANIA32`).
+Setup, hashes and API findings: `research/turbo/2026-09-08-Turbo-Setup.md`.
+
+- [x] Turbo binary identified: `TrackmaniaTurbo.exe`, **PE32 i386 (32-bit)**, Ubisoft build in the TM2020 prefix
+- [x] Ghidra headless analysis on x-alpha (project `~/re/turbo`, unit `ghidra-turbo-analyze`); MCP scripts
+      `research/turbo/tools/ghidra-turbo.sh` + `ghidra_api.sh` on port **18744** (18743 is ManiaPlanet.exe),
+      tunnel unit `ghidra-turbo-tunnel.service`
+- [x] Openplanet for Turbo 1.29.14 downloaded; installer helper `~/.local/bin/tm-turbo-openplanet {install|remove|status}`
+- [x] Turbo API docs mirrored to `~/.llm-general/website-archives/openplanet/turbo-raw/`
+- [x] Turbo has the same RaceGhost script API: `CTrackManiaRaceRules.RaceGhost_Add/AddWithOffset/AddModel/Remove/RemoveAll/GetStartTime/GetCurCheckpoint/GetCheckpointTime/IsReplayOver`, plus `CTrackManiaRace.RaceGhosts` and `CTrackManiaRace1PGhosts.MedalGhosts`
+- [ ] Confirm whether Turbo has `RaceGhost_IsVisible` / `RaceGhost_GetPosition` (absent from the docs index; MP4 has both) — the re-add detection depends on `IsVisible`
+- [ ] (blocked, grok-word-chart-v5rk) get Turbo launching and playable under Proton, then install Openplanet and dump `OpenplanetTurbo.json`
+- [ ] Turbo control plugin (mirror of tm-mp4-control) or a `#if TURBO` build of it, plus a screenshot/nav script set
+- [ ] Port Ghosts2: app/race/rules accessors, load paths (replay/PB/medals; leaderboards probably do not exist on Turbo), time control (the record layout and the clock function must be re-derived for 32-bit), spectate + camera (Turbo uses `CGameControlCameraTrackManiaRace`, not MP4's camera system offsets)
 
 ## Tooling / infra
 - [x] tm-mp4-control: socket control plugin (menus, click, titles, play_map, campaigns, race, ghosts, mem, findu32(deep), race_ghost_add/remove/query, spectate)
