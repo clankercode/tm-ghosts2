@@ -94,6 +94,27 @@ import json,sys
 for g in json.load(sys.stdin)['data']: print('        ', g['instId'], g['nickname'][:20], 'ghostTime', g['ghostTime'])"
   fi
 
+fi
+
+# Playback / spectate / remove run against whatever is in the race - in the legacy solo playground that is the
+# engine's own opponent ghosts, which Ghosts2 drives even though it cannot add to them.
+n_ghosts="$(ghosts | jq_ "sum(1 for g in d if g['ghostTime'] >= 0)")"
+if [[ "${n_ghosts:-0}" -lt 1 ]]; then
+  note "no ghost with a playback record: playback / spectate / remove checks skipped"
+else
+  head_ "the replay browser lists files as files"
+  b="$(call ghosts2.browse)"
+  root_dirs="$(printf '%s' "$b" | jq_ "len(d['dirs'])")"
+  if [[ "${root_dirs:-0}" -gt 0 ]]; then ok "replay folder lists $root_dirs subfolder(s)"; else bad "replay folder listed no subfolders"; fi
+  sub="$(printf '%s' "$b" | jq_ "next((x for x in d['dirs'] if x.rstrip('/').endswith('Ghosts2')), d['dirs'][0] if d['dirs'] else '')")"
+  if [[ -n "$sub" ]]; then
+    b2="$(call ghosts2.browse dir="$sub")"
+    nf="$(printf '%s' "$b2" | jq_ "len(d['files'])")"
+    nd="$(printf '%s' "$b2" | jq_ "len(d['dirs'])")"
+    if [[ "${nf:-0}" -gt 0 ]]; then ok "$sub lists $nf file(s) as files (and $nd folders)"
+    else bad "$sub listed 0 files - are replays being classified as folders again?"; fi
+  fi
+
   head_ "playback control (pause / seek / speed, through the lock)"
   id="$(ghosts | jq_ "d[0]['instId']")"
   # seek first so the pause check holds a non-zero time (a ghost paused at its start would pass trivially)
@@ -117,6 +138,21 @@ for g in json.load(sys.stdin)['data']: print('        ', g['instId'], g['nicknam
   call ghosts2.seek instId="$id" ms=2000 >/dev/null
   call ghosts2.pause instId="$id" paused=true >/dev/null
 
+  head_ "leaderboard fetch and load"
+  call ghosts2.lb_fetch >/dev/null
+  if wait_until 30 bash -c "timeout 20 python3 '$CTL/tools/mp4call.py' ghosts2.lb_list 2>/dev/null | python3 -c \"
+import json,sys
+sys.exit(0 if len(json.load(sys.stdin)['data']['entries'])>0 else 1)\""; then
+    ok "leaderboard fetched ($(call ghosts2.lb_list | jq_ "len(d['entries'])") records)"
+    lb_before="$(ghosts | jq_ "len(d)")"
+    call ghosts2.load_lb rank=1 >/dev/null
+    if wait_until 30 bash -c "[[ \$(timeout 20 python3 '$CTL/tools/mp4call.py' ghosts2.list 2>/dev/null | python3 -c \"import json,sys;print(len(json.load(sys.stdin)['data']))\") -gt $lb_before ]]"; then
+      ok "leaderboard ghost downloaded and added"
+    else bad "leaderboard ghost never arrived: $(state "d['status']")"; fi
+  else
+    note "leaderboard did not answer for this map: $(call ghosts2.lb_list | jq_ "d['status']")"
+  fi
+
   head_ "spectate and stop"
   sleep 1
   if [[ "$(call ghosts2.spectate instId="$id" | jq_ "'ok' if r.get('ok') else 'no'")" == "ok" ]]; then
@@ -130,13 +166,20 @@ for g in json.load(sys.stdin)['data']: print('        ', g['instId'], g['nicknam
     bad "spectate refused: $(state "d['status']")"
   fi
 
-  head_ "remove sticks"
-  id2="$(ghosts | jq_ "d[0]['instId']")"
+  head_ "remove"
+  # prefer a ghost Ghosts2 added: the game's own race ghosts cannot be taken out of the race at all, and the
+  # plugin is expected to say so rather than to pretend the row went away.
+  id2="$(ghosts | jq_ "next((g['instId'] for g in d if g['source'] != 'engine'), d[0]['instId'])")"
+  src2="$(ghosts | jq_ "next((g['source'] for g in d if g['instId'] == $id2), '?')")"
   n_before="$(ghosts | jq_ "len(d)")"
   call ghosts2.remove instId="$id2" >/dev/null; sleep 5
   still="$(ghosts | jq_ "sum(1 for g in d if g['instId']==$id2)")"
   n_after="$(ghosts | jq_ "len(d)")"
-  if [[ "${still:-1}" == "0" ]]; then ok "removed ghost stays removed ($n_before -> $n_after tracked)"
+  if [[ "$src2" == "engine" ]]; then
+    st="$(state "d['status']")"
+    if [[ "${still:-0}" == "1" && "$st" == *"game's own race ghosts"* ]]; then ok "engine ghost cannot be removed and says so"
+    else bad "engine ghost removal: still=$still status='$st'"; fi
+  elif [[ "${still:-1}" == "0" ]]; then ok "removed ghost stays removed ($n_before -> $n_after tracked)"
   else bad "removed ghost came back (instId $id2 still listed)"; fi
 fi
 

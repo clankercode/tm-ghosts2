@@ -107,9 +107,14 @@ uint ScriptGhostTime(CGameGhostScript@ g) {
     return t < 0 ? 0 : uint(t);
 }
 
-// The classic campaign race (CTrackManiaRace1P) does expose a CTrackManiaRaceRules nod, but it is not the one
-// driving the race: its Players list is empty (the playground has the player), so RaceGhost_Add returns MwId 0
-// and SpawnPlayer has nobody to spawn. Loading ghosts needs a script-driven race (CTrackManiaRaceNew).
+// The legacy solo race (CTrackManiaRace1P - what the classic Campaigns menu and `play_campaign_map` without a
+// mode script give you) does expose a CTrackManiaRaceRules nod, but it is not the one driving the race: its
+// Players list is empty while the playground has the player, RaceGhost_Add returns MwId 0, and SpawnPlayer has
+// nobody to spawn. Measured on A01 and A05, minutes after the race went live. A script-driven race
+// (CTrackManiaRaceNew - PlayMap with a mode script, or a campaign whose mode script runs, e.g. CampaignSolo)
+// has Players populated and takes ghosts normally.
+// This is a hint for the UI only: it never disables a load, because a proxy that is wrong in some state
+// would take away a feature that works.
 bool Race_CanAddGhosts() {
     auto rules = CurrentRules();
     return rules !is null && rules.Players.Length > 0;
@@ -118,7 +123,7 @@ bool Race_CanAddGhosts() {
 // Suffix for a rejected add: name the usual cause instead of leaving the user with a bare rejection.
 string AddRejectedWhy() { return Race_CanAddGhosts() ? "." : " - " + ClassicRaceHint + "."; }
 
-const string ClassicRaceHint = "the classic campaign race only plays the ghosts picked in the game's own opponent dialog; start the map from the map menu for a script race to load ghosts into";
+const string ClassicRaceHint = "this race is the legacy solo playground (CTrackManiaRace1P), whose rules script has no players - RaceGhost_Add is refused there and only the ghosts picked in the game's own opponent dialog play. Start the map through a mode script (the title pack's Solo/Play flow) to load ghosts into it";
 
 // Script modes only: unspawn + respawn the local player (a RaceGhost_Add'ed ghost only starts on the next spawn).
 bool Race_RespawnLocal(uint delayMs = 1500) { return Race_SpawnLocal(delayMs, true); }

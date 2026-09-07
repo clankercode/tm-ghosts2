@@ -31,6 +31,7 @@ namespace Ghosts2Mp4Pack {
     Json::Value@ Dispatch(const string &in cmd, Json::Value@ args) {
         if (cmd == "list") return Ok(Ghosts2::ListGhosts());
         if (cmd == "state") return Ok(Ghosts2::State());
+        if (cmd == "browse") return Ok(Ghosts2::Browse(string(args.Get("dir", ""))));
         if (cmd == "load_replay") {
             string path = string(args.Get("path", ""));
             if (path.Length == 0) return Err("load_replay needs path");

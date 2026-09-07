@@ -4,9 +4,10 @@ void DrawLoadTab() {
     auto rules = CurrentRules();
     if (rules is null) UI::TextWrapped("\\$fc4No CTrackManiaRaceRules - loading needs a running TrackMania playground.");
     bool canAdd = Race_CanAddGhosts();
-    if (rules !is null && !canAdd) UI::TextWrapped("\\$fc4Ghosts cannot be added here: " + ClassicRaceHint + ".");
+    // A warning, not a lock: the buttons stay live so a race this heuristic misjudges can still load ghosts.
+    if (rules !is null && !canAdd) UI::TextWrapped("\\$fc4Adding ghosts will probably fail: " + ClassicRaceHint + ".");
 
-    UI::BeginDisabled(!canAdd || g_busy);
+    UI::BeginDisabled(rules is null || g_busy);
     if (UI::Button(Icons::Download + " Load my PB")) Load_PersonalBest();
     UI::EndDisabled();
     AddSimpleTooltip("ScoreMgr.Map_GetRecordGhost(localUser, mapUid, \"\")");
@@ -15,7 +16,7 @@ void DrawLoadTab() {
     else UI::Text("\\$888" + g_status);
 
     // Medal ghosts (Nadeo campaign maps; TMX maps have none - failures notify via SetStatus).
-    UI::BeginDisabled(!canAdd || g_busy);
+    UI::BeginDisabled(rules is null || g_busy);
     if (UI::Button(Icons::Trophy + " Load author ghost")) Load_Medal(4);
     UI::SameLine();
     if (UI::Button("Gold")) Load_Medal(3);
@@ -55,7 +56,7 @@ void DrawLoadTab() {
             break;
         }
     }
-    UI::BeginDisabled(!canAdd || g_busy);
+    UI::BeginDisabled(rules is null || g_busy);
     for (uint i = 0; i < g_browseFiles.Length; i++) {
         UI::PushID("f" + i);
         if (UI::Button(Icons::PlusCircle + "##load")) Load_ReplayFile(g_browseFiles[i]);
@@ -94,7 +95,6 @@ void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
     UI::Text("\\$888" + (g_lbBusy ? "fetching ..." : g_lbStatus));
 
     if (g_lbEntries.Length == 0) return;
-    bool canAdd = Race_CanAddGhosts();
     bool stale = g_lbMapUid != CurrentMapUid();
     if (stale) UI::Text("\\$fc4Fetched for another map - fetch again.");
     if (UI::BeginTable("g2-lb", 4, UI::TableFlags::SizingFixedFit | UI::TableFlags::RowBg)) {
@@ -110,7 +110,7 @@ void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
             UI::TableNextColumn(); UI::Text(e.name.Length > 0 ? e.name : e.login);
             UI::TableNextColumn(); UI::Text(FormatTime(e.score));
             UI::TableNextColumn();
-            UI::BeginDisabled(stale || g_busy || !canAdd || e.url.Length == 0);
+            UI::BeginDisabled(stale || g_busy || rules is null || e.url.Length == 0);
             if (UI::Button(Icons::PlusCircle + "##lb" + i)) Lb_Load(e.rank);
             UI::EndDisabled();
             AddSimpleTooltip("DataFileMgr.Ghost_Download(FileName, ReplayUrl) then RaceGhost_Add");

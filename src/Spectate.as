@@ -11,6 +11,7 @@ uint g_specPrevCamType = 0;
 bool g_specPrevForceSpectator = false;
 CGamePlaygroundUIConfig::EUISequence g_specPrevSequence = CGamePlaygroundUIConfig::EUISequence::None;
 
+
 bool Spectate_Start(uint instId) {
     if (instId == 0) return false;
     auto ui = UiAll();

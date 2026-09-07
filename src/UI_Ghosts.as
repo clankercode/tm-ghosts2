@@ -101,9 +101,10 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text(FormatTime(pg.raceTime));
         UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("" + pg.instId);
         UI::TableNextColumn(); UI::AlignTextToFramePadding();
-        if (pg.gaveUp) UI::Text("\\$f44gave up");
-        else if (pg.inRace) UI::Text("\\$8f8in race");
-        else UI::Text("\\$fc4missing");
+        if (pg.gaveUp) { UI::Text("\\$f44gave up"); AddSimpleTooltip("Ghosts2 stopped trying to put this ghost back in the race."); }
+        else if (!pg.inRace) { UI::Text("\\$fc4missing"); AddSimpleTooltip("The race no longer holds this instance; Ghosts2 will re-add it if it can."); }
+        else if (TimeCtl_GhostTime(pg) < 0) { UI::Text("\\$fc4queued"); AddSimpleTooltip("Added, but the engine only builds a ghost's playback record when you (re)spawn - restart your run and it will start."); }
+        else { UI::Text("\\$8f8in race"); AddSimpleTooltip("Playing, with a playback record Ghosts2 can drive."); }
         UI::TableNextColumn(); UI::AlignTextToFramePadding(); UI::Text("\\$888" + pg.source);
         UI::TableNextColumn();
         UI::BeginDisabled(rules is null);

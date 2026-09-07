@@ -51,18 +51,23 @@ bool LooksLikeGhostFile(const string &in path) {
 
 void Browse_Refresh() {
     g_browseInit = true;
-    g_browseDirs.RemoveRange(0, g_browseDirs.Length);
-    g_browseFiles.RemoveRange(0, g_browseFiles.Length);
     if (g_browseDir.Length == 0) g_browseDir = DefaultReplaysFolder();
     if (!IO::FolderExists(g_browseDir)) {
+        // keep the previous listing on screen: an empty pane hides where you actually are
         SetStatus("Folder not found: " + g_browseDir, false, true);
         return;
     }
+    g_browseDirs.RemoveRange(0, g_browseDirs.Length);
+    g_browseFiles.RemoveRange(0, g_browseFiles.Length);
     auto entries = IO::IndexFolder(g_browseDir, false);
     for (uint i = 0; i < entries.Length; i++) {
         string e = entries[i].Replace("\\", "/");
-        if (IO::FolderExists(e)) {
-            g_browseDirs.InsertLast(NormalizeDir(e));
+        // IO::IndexFolder marks a directory with a trailing separator. Do NOT use IO::FolderExists here:
+        // in Openplanet it is the same "does this path exist" predicate as IO::FileExists, so it answers
+        // true for ordinary files too - which listed every replay as a folder, left the file list empty
+        // (so nothing could be loaded), and turned a click into "Folder not found: <the file>/".
+        if (e.EndsWith("/")) {
+            g_browseDirs.InsertLast(e);
         } else if (!S_FilterGhostFiles || LooksLikeGhostFile(e)) {
             g_browseFiles.InsertLast(e);
         }
@@ -70,6 +75,7 @@ void Browse_Refresh() {
 }
 
 void Browse_Goto(const string &in dir) {
+    if (LooksLikeGhostFile(dir)) { Load_ReplayFile(dir); return; }   // a mis-click must not strand the browser
     g_browseDir = NormalizeDir(dir);
     Browse_Refresh();
 }

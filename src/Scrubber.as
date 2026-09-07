@@ -34,11 +34,26 @@ bool Scrubber_InCountdown() {
 bool Scrubber_ShouldShow(float w) {
     if (!S_ScrubAutoHide || g_scrubDragging || g_specActive) return true;
     if (S_ScrubShowBeforeStart && Scrubber_InCountdown()) return true;
+    // The hover test below needs a live mouse position, which there is not while the Openplanet overlay is
+    // hidden - and that is exactly when the strip matters most. So while playback is being held (paused, or
+    // running at anything other than 1x) keep it on screen regardless of the mouse.
+    if (Scrubber_PlaybackHeld()) return true;
     vec2 m = UI::GetMousePos();
     vec2 p0 = vec2((Display::GetWidth() - w) / 2, Display::GetHeight() - 120);
     float h = g_scrubLastSize.y > 0 ? g_scrubLastSize.y : 64.0f;
     if (m.x >= p0.x && m.x <= p0.x + w && m.y >= p0.y && m.y <= p0.y + h) g_scrubLastHover = Time::Now;
     return Time::Now - g_scrubLastHover < S_ScrubHideDelayMs;
+}
+
+// True while any ghost we own is paused or playing at a non-default speed, i.e. the user is actively
+// scrubbing rather than just driving.
+bool Scrubber_PlaybackHeld() {
+    for (uint i = 0; i < g_clock.Length; i++) {
+        auto e = g_clock[i];
+        if (e is null) continue;
+        if (e.paused || Math::Abs(e.speed - 1.0f) > 0.001f) return true;
+    }
+    return false;
 }
 
 void Scrubber_Close() {
@@ -176,7 +191,7 @@ void DrawScrubberWindow() {
     UI::SameLine();
     if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(96, 0))) Spectate_CycleCameraType(false);
     if (UI::IsItemHovered()) {
-        AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls");
+        AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls\nOnly Game leaves your spectator keys working; the other three force the view, so the game's own camera keys do nothing while they are selected.");
         if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
     }
     if (S_SpectateCameraType == 1) {

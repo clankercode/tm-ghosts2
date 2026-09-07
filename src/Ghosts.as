@@ -147,6 +147,15 @@ bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
                 break;
             }
         }
+        // The solo mode scripts put the local player's own live recording in the race (RaceGhost_Add with
+        // DisplayAsPlayerBest). It has no finished time, so no CGameGhostScript can be recovered for it and
+        // it can never be re-added - adopting it just produced a dead row plus five "giving up re-adding"
+        // warnings every time the mode rebuilt its ghosts with a fresh instance id.
+        if (Ghosts_WasRemovedKey(pg.key)) continue;   // you removed this ghost; the mode re-added it under a new id
+        if (pg.ghost is null && (pg.raceTime == 0 || pg.raceTime == 0xffffffff)) {
+            trace("Ghosts2: ignoring race ghost with no finished time and no script handle: " + pg.DisplayName() + " inst " + Text::Format("0x%08x", instId));
+            continue;
+        }
         g_ghosts.InsertLast(pg);
         Scrubber_AutoOpen(pg);
         trace("Ghosts2: adopted race ghost " + pg.DisplayName() + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
@@ -235,17 +244,41 @@ bool Ghosts_PushToRace(PluginGhost@ pg) {
 // without this set a removed ghost was re-adopted on the very next scan. Ids are dropped again once the
 // engine has actually forgotten them.
 array<uint> g_removedInstIds;
+// ...and by identity (nickname + time), because the mode re-adds its ghosts under a *new* instance id after
+// every phase change: an id-only filter let a ghost you removed walk straight back into the list.
+array<string> g_removedKeys;
 
 bool Ghosts_WasRemoved(uint instId) { return g_removedInstIds.Find(instId) >= 0; }
+bool Ghosts_WasRemovedKey(const string &in key) { return key.Length > 0 && g_removedKeys.Find(key) >= 0; }
 
 void Ghosts_Remove(PluginGhost@ pg) {
     if (pg is null) return;
     auto rules = CurrentRules();
+    bool isEngine = g_engineGhosts.FindByRef(pg) >= 0;
     if (rules !is null && pg.instId != 0) rules.RaceGhost_Remove(pg.InstMwId());
+    // The game's own race ghosts (the opponents you picked in its dialog) are not ours to take out: in the
+    // legacy solo playground RaceGhost_Remove is a no-op, and Ghosts_SyncEngine reads them straight back out
+    // of CTrackManiaRace.RaceGhosts. Check whether the removal actually landed instead of pretending it did.
+    if (isEngine) {
+        auto race = CurrentRace();
+        if (race !is null) {
+            for (uint i = 0; i < race.RaceGhosts.Length; i++) {
+                if (NodPointer(race.RaceGhosts[i]) != pg.ctnPtr) continue;
+                SetStatus(pg.DisplayName() + " is one of the game's own race ghosts and stays in the race - pick opponents in the game's own dialog to change them.", true, true);
+                return;
+            }
+        }
+    }
     if (pg.instId != 0 && !Ghosts_WasRemoved(pg.instId)) g_removedInstIds.InsertLast(pg.instId);
+    if (!Ghosts_WasRemovedKey(pg.key)) g_removedKeys.InsertLast(pg.key);
     Spectate_ForgetGhost(pg.instId);
     int idx = g_ghosts.FindByRef(pg);
     if (idx >= 0) g_ghosts.RemoveAt(idx);
+    else {
+        // engine ghosts (classic race) live in their own list; without this they stayed on screen
+        idx = g_engineGhosts.FindByRef(pg);
+        if (idx >= 0) g_engineGhosts.RemoveAt(idx);
+    }
     SetStatus("Removed " + pg.DisplayName() + " - it stops driving at your next restart.");
 }
 
@@ -256,6 +289,7 @@ void Ghosts_RemoveAll() {
     for (uint i = 0; i < g_ghosts.Length; i++) {
         uint id = g_ghosts[i].instId;
         if (id != 0 && !Ghosts_WasRemoved(id)) g_removedInstIds.InsertLast(id);
+        if (!Ghosts_WasRemovedKey(g_ghosts[i].key)) g_removedKeys.InsertLast(g_ghosts[i].key);
     }
     g_ghosts.RemoveRange(0, g_ghosts.Length);
 }
@@ -263,6 +297,7 @@ void Ghosts_RemoveAll() {
 // Drop our bookkeeping without touching the race (used on map change).
 void Ghosts_ForgetAll() {
     g_removedInstIds.RemoveRange(0, g_removedInstIds.Length);
+    g_removedKeys.RemoveRange(0, g_removedKeys.Length);
     Spectate_Reset();
     TimeCtl_ReleaseAll();
     g_ghosts.RemoveRange(0, g_ghosts.Length);
@@ -322,6 +357,13 @@ void Ghosts_Update() {
     for (uint i = 0; i < g_ghosts.Length; i++) {
         auto pg = g_ghosts[i];
         if (pg.inRace || pg.gaveUp) continue;
+        if (pg.ghost is null) {
+            // Ghosts_PushToRace needs a CGameGhostScript; without one every attempt fails identically,
+            // so stop at the first instead of counting to S_MaxReAddAttempts and warning each time.
+            pg.gaveUp = true;
+            trace("cannot re-add ghost '" + pg.nickname + "': no script handle");
+            continue;
+        }
         pg.failedReAdds++;
         if (pg.failedReAdds > S_MaxReAddAttempts) {
             pg.gaveUp = true;

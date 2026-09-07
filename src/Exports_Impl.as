@@ -11,7 +11,9 @@ namespace Ghosts2 {
             row["nickname"] = pg.nickname;
             row["time"] = pg.raceTime;
             row["source"] = pg.source;
-            row["status"] = pg.gaveUp ? "gave_up" : (pg.inRace ? "in_race" : "missing");
+            // "queued" = accepted by RaceGhost_Add but the engine has not built its playback record yet
+            // (that happens at the next spawn), which is very different from "missing".
+            row["status"] = pg.gaveUp ? "gave_up" : (pg.inRace ? (TimeCtl_GhostTime(pg) >= 0 ? "in_race" : "queued") : "missing");
             row["startTime"] = rules is null || pg.instId == 0 ? 0 : rules.RaceGhost_GetStartTime(pg.InstMwId());
             row["visible"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsVisible(pg.InstMwId());
             row["replayOver"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsReplayOver(pg.InstMwId());
@@ -44,6 +46,23 @@ namespace Ghosts2 {
             }
         }
         return arr;
+    }
+
+    // The Load tab's replay browser as data, so it can be driven and checked from a script:
+    // `dir` non-empty navigates there first (a directory - to load a file use LoadReplay).
+    Json::Value@ Browse(const string &in dir) {
+        if (dir.Length > 0) Browse_Goto(dir);
+        else if (!g_browseInit) Browse_Refresh();
+        auto o = Json::Object();
+        o["dir"] = g_browseDir;
+        auto ds = Json::Array();
+        for (uint i = 0; i < g_browseDirs.Length; i++) ds.Add(Json::Value(g_browseDirs[i]));
+        auto fs = Json::Array();
+        for (uint i = 0; i < g_browseFiles.Length; i++) fs.Add(Json::Value(g_browseFiles[i]));
+        o["dirs"] = ds;
+        o["files"] = fs;
+        o["status"] = g_status;
+        return o;
     }
 
     // The Load* wrappers return "accepted" only; the async task reports through State()/ListGhosts().
@@ -81,13 +100,12 @@ namespace Ghosts2 {
     void SetFollowCam(uint cam) { S_SpectateFollowCam = Math::Clamp(cam, 1, 3); }   // Follow spectator camera: 1 far, 2 close, 3 internal
 
     bool Remove(uint instId) {
-        for (uint i = 0; i < g_ghosts.Length; i++) {
-            if (g_ghosts[i].instId == instId) {
-                Ghosts_Remove(g_ghosts[i]);
-                return true;
-            }
-        }
-        return false;
+        // Ghosts_FindByInstId, not a g_ghosts scan: the engine's own race ghosts live in their own list and
+        // were silently unreachable from here (the pack's `remove` just returned false for them).
+        auto pg = Ghosts_FindByInstId(instId);
+        if (pg is null) return false;
+        Ghosts_Remove(pg);
+        return true;
     }
 
     void RemoveAll() { Ghosts_RemoveAll(); }
