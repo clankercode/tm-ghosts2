@@ -16,6 +16,9 @@ uint S_ScanIntervalMs = 1000;
 [Setting category="Auto re-add" name="Give up after N failed re-adds" min=1 max=20 description="Stops an add/remove fight if the ghost never shows up in RaceGhosts."]
 uint S_MaxReAddAttempts = 5;
 
+[Setting category="Time control" name="Enable pause / seek / speed" description="Writes the ghost's StartTime in the engine's race-ghost record (script modes only). Turn off if a game update moves the structure."]
+bool S_TimeControl = true;
+
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
 

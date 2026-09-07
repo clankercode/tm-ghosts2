@@ -12,6 +12,7 @@ void Main() {
 
 void Update(float dt) {
     Ghosts_Update();
+    TimeCtl_Update(dt);
 }
 
 void OnDestroyed() { Cleanup(); }

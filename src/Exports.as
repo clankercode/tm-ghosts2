@@ -11,4 +11,9 @@ namespace Ghosts2 {
     import void StopSpectating() from "Ghosts2";
     import Json::Value@ State() from "Ghosts2";
     import void ShowWindow(bool visible) from "Ghosts2";
+    // Time control (script modes only): ghost time in ms, or -1 when not started / unavailable.
+    import int GetGhostTime(uint instId) from "Ghosts2";
+    import bool Seek(uint instId, uint ghostTimeMs) from "Ghosts2";
+    import bool SetPaused(uint instId, bool paused) from "Ghosts2";
+    import bool SetSpeed(uint instId, float speed) from "Ghosts2";
 }

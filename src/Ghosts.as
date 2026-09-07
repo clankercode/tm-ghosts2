@@ -16,6 +16,14 @@ class PluginGhost {
     uint failedReAdds = 0;
     bool gaveUp = false;
 
+    // time control (TimeControl.as)
+    bool paused = false;
+    float speed = 1.0;
+    float heldTime = 0.0;   // ms into the replay while paused / at non-1x speed
+    uint64 rec = 0;         // cached engine record pointer
+
+    bool Controlled() { return paused || speed != 1.0; }
+
     PluginGhost(CGameGhostScript@ g, const string &in src) {
         @ghost = g;
         source = src;

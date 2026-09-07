@@ -127,6 +127,40 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
     }
     UI::EndTable();
     if (toRemove !is null) Ghosts_Remove(toRemove);
+    DrawPlaybackControls();
+}
+
+void DrawPlaybackControls() {
+    if (!TimeCtl_Available()) {
+        if (g_ghosts.Length > 0) UI::TextDisabled("Playback control needs a script-mode race (CTrackManiaRaceNew)" + (S_TimeControl ? "" : " and the Time control setting"));
+        return;
+    }
+    UI::SeparatorText("Playback");
+    for (uint i = 0; i < g_ghosts.Length; i++) {
+        auto pg = g_ghosts[i];
+        if (pg.instId == 0) continue;
+        UI::PushID("pb" + i);
+        int t = TimeCtl_GhostTime(pg);
+        UI::Text(pg.nickname + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))));
+        UI::SameLine();
+        UI::BeginDisabled(t < 0);
+        if (UI::Button(pg.paused ? Icons::Play + "##pp" : Icons::Pause + "##pp")) TimeCtl_SetPaused(pg, !pg.paused);
+        if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause (holds StartTime every frame)");
+        UI::SameLine();
+        array<float> speeds = {0.25, 0.5, 1.0, 2.0};
+        for (uint s = 0; s < speeds.Length; s++) {
+            if (s > 0) UI::SameLine();
+            bool active = pg.speed == speeds[s];
+            if (UI::Button((active ? "\\$8f8" : "") + Text::Format("%.2gx", speeds[s]) + "##spd" + s)) TimeCtl_SetSpeed(pg, speeds[s]);
+        }
+        UI::SameLine();
+        UI::SetNextItemWidth(220);
+        int maxT = pg.raceTime > 0 ? int(pg.raceTime) : 60000;
+        int seek = UI::SliderInt("##seek", t < 0 ? 0 : t, 0, maxT);
+        if (UI::IsItemActive() && seek != t) TimeCtl_Seek(pg, uint(seek));
+        UI::EndDisabled();
+        UI::PopID();
+    }
 }
 
 string SuggestedSaveName(PluginGhost@ pg) {

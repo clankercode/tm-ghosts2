@@ -15,6 +15,9 @@ namespace Ghosts2 {
             row["startTime"] = rules is null || pg.instId == 0 ? 0 : rules.RaceGhost_GetStartTime(pg.InstMwId());
             row["visible"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsVisible(pg.InstMwId());
             row["replayOver"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsReplayOver(pg.InstMwId());
+            row["ghostTime"] = TimeCtl_GhostTime(pg);
+            row["paused"] = pg.paused;
+            row["speed"] = pg.speed;
             arr.Add(row);
         }
         // Classic mode: the engine ghosts live here (script-mode RaceGhosts stays empty).
@@ -83,4 +86,16 @@ namespace Ghosts2 {
     }
 
     void ShowWindow(bool visible) { S_ShowWindow = visible; }
+
+    PluginGhost@ FindTracked(uint instId) {
+        for (uint i = 0; i < g_ghosts.Length; i++) {
+            if (g_ghosts[i].instId == instId && instId != 0) return g_ghosts[i];
+        }
+        return null;
+    }
+
+    int GetGhostTime(uint instId) { return TimeCtl_GhostTime(FindTracked(instId)); }
+    bool Seek(uint instId, uint ghostTimeMs) { return TimeCtl_Seek(FindTracked(instId), ghostTimeMs); }
+    bool SetPaused(uint instId, bool paused) { return TimeCtl_SetPaused(FindTracked(instId), paused); }
+    bool SetSpeed(uint instId, float speed) { return TimeCtl_SetSpeed(FindTracked(instId), speed); }
 }

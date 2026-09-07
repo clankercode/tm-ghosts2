@@ -1,6 +1,7 @@
 // tm-ghosts2-mp4pack: exposes Ghosts2's exported API as a tm-mp4-control command pack.
 // Socket usage: tm-mp4-control/tools/mp4call.py ghosts2.list (also: state, load_replay,
-// load_pb, load_medal, remove, remove_all, spectate, stop_spectating, show_window).
+// load_pb, load_medal, remove, remove_all, spectate, stop_spectating, show_window,
+// ghost_time, seek ms=, pause paused=, speed speed=).
 
 // Imports come from the dependencies' `exports` files (Mp4Control/Exports.as, Ghosts2/Exports.as);
 // Openplanet compiles those into this module, so re-declaring them here is a duplicate-function error.
@@ -59,6 +60,23 @@ namespace Ghosts2Mp4Pack {
         if (cmd == "stop_spectating") {
             Ghosts2::StopSpectating();
             return OkTrue();
+        }
+        if (cmd == "ghost_time") {
+            uint instId = uint(args.Get("instId", 0));
+            auto o = Json::Object(); o["ok"] = true; o["data"] = Ghosts2::GetGhostTime(instId);
+            return o;
+        }
+        if (cmd == "seek") {
+            uint instId = uint(args.Get("instId", 0));
+            return Ghosts2::Seek(instId, uint(args.Get("ms", 0))) ? OkTrue() : Err("seek failed (unknown instId, not started, or not a script-mode race)");
+        }
+        if (cmd == "pause") {
+            uint instId = uint(args.Get("instId", 0));
+            return Ghosts2::SetPaused(instId, bool(args.Get("paused", true))) ? OkTrue() : Err("pause failed (unknown instId or not started)");
+        }
+        if (cmd == "speed") {
+            uint instId = uint(args.Get("instId", 0));
+            return Ghosts2::SetSpeed(instId, float(double(args.Get("speed", 1.0)))) ? OkTrue() : Err("speed failed (unknown instId, not started, or speed outside 0..16)");
         }
         if (cmd == "show_window") {
             Ghosts2::ShowWindow(bool(args.Get("visible", true)));
