@@ -43,6 +43,10 @@ namespace Ghosts2Mp4Pack {
             uint level = uint(args.Get("level", 4));
             return Ghosts2::LoadMedal(level) ? OkTrue() : Err("load rejected (busy or level not 1..4)");
         }
+        if (cmd == "follow_cam") {
+            Ghosts2::SetFollowCam(uint(args.Get("cam", 1)));
+            return OkTrue();
+        }
         if (cmd == "cam") {
             Ghosts2::SetCameraType(uint(args.Get("type", 0)));
             return OkTrue();

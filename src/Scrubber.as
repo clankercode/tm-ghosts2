@@ -123,7 +123,7 @@ void DrawScrubberWindow() {
     int maxT = int(pg.raceTime > 0 ? pg.raceTime : 60000);
     if (t > maxT) maxT = t;
 
-    float w = Math::Min(760.0f, Display::GetWidth() * 0.6f);
+    float w = Math::Min(912.0f, Display::GetWidth() * 0.72f);   // Ghosts++ strip, 20% wider (user request)
     if (!Scrubber_ShouldShow(w)) return;
     UI::SetNextWindowSize(int(w), 0, UI::Cond::Always);
     UI::SetNextWindowPos(int((Display::GetWidth() - w) / 2), int(Display::GetHeight() - 120), UI::Cond::Always);
@@ -178,6 +178,15 @@ void DrawScrubberWindow() {
     if (UI::IsItemHovered()) {
         AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls");
         if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
+    }
+    if (S_SpectateCameraType == 1) {
+        // Follow: which vehicle cam (the engine's forced Follow would always use cam 1)
+        UI::SameLine();
+        if (UI::Button("Cam " + Math::Clamp(S_SpectateFollowCam, 1, 3) + "##fcam", vec2(62, 0))) Spectate_CycleFollowCam(false);
+        if (UI::IsItemHovered()) {
+            AddSimpleTooltip("Follow camera (click = next, right click = previous)\n  Cam 1: behind, far\n  Cam 2: behind, close\n  Cam 3: internal");
+            if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleFollowCam(true);
+        }
     }
     UI::SameLine();
     uint nMembers = locked ? Lock_Members().Length : 0;

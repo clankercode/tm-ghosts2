@@ -55,5 +55,8 @@ bool S_CameraHook = true;
 [Setting category="Spectate" name="Camera type" min=0 max=15 description="SpectatorForceCameraType: 0 replay (engine camera clip), 1 follow (chase cam), 2 free cam, 15 none (the game's own spectator camera controls apply). The scrubber's camera button cycles these."]
 uint S_SpectateCameraType = 0;
 
+[Setting category="Spectate" name="Follow camera" min=1 max=3 description="Vehicle camera used by the Follow spectator camera: 1 behind (far), 2 behind (close), 3 internal. The scrubber's Cam button cycles these."]
+uint S_SpectateFollowCam = 1;
+
 [Setting category="Spectate" name="Also set UISequence = EndRound" description="Mirrors Nadeo's StartReplaySequence(). May fight the running mode script; off by default."]
 bool S_SpectateEndRoundSequence = false;

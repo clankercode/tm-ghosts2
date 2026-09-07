@@ -19,8 +19,15 @@ uint g_camForcedId = CamId_None;  // what the hook writes this frame (none while
 uint g_camHookWrites = 0;
 string g_camLastErr = "";
 
+// Follow-spectate sub-camera: the spectator path writes cam id 0x12 into camsys+0x180 every frame before
+// CameraSystem_UpdateFrame reads it; the resolver hook runs in between, so writing our own id here wins.
+const uint64 O_CamSys_CamId = 0x180;
+uint g_camForcedCamId = 0;        // 0 = leave the engine's choice
+
 void OnCameraResolveTarget(uint64 rcx) {
-    if (g_camForcedId == CamId_None || rcx == 0) return;
+    if (rcx == 0) return;
+    if (g_camForcedCamId != 0) Dev::Write(rcx + O_CamSys_CamId, g_camForcedCamId);
+    if (g_camForcedId == CamId_None) return;
     Dev::Write(rcx + O_CamSys_ForcedId, g_camForcedId);
     g_camHookWrites++;
 }
@@ -72,17 +79,36 @@ bool CamTarget_GhostHasVis(PluginGhost@ pg) {
 // Called from the plugin's own Update(): Dev::Hook resolves the callback in the *calling* module, so the
 // hook must be installed from here, not from an export invoked by another plugin (that raised
 // "Unable to find a function with the given name in the current module").
+// Engine vehicle cam ids (verified 2026-09-08 by forcing camsys+0x180 while Follow-spectating): 0x12 behind far,
+// 0x13 behind close, 0x14 internal (0x15 internal facing back; 8 / 9 close-chase variants). The forced Follow
+// spectator camera (SpectatorForceCameraType 1 -> cam type 0xe) hard-codes 0x12 in the per-terminal cam compute
+// (FUN_140e462a0); the terminal's own Follow honours the player's key choice at CGameTerminal+0x44.
+const array<uint> FollowCamIds = {0x12, 0x13, 0x14};
+
+uint Spectate_FollowCamId() {
+    uint n = Math::Clamp(S_SpectateFollowCam, 1, FollowCamIds.Length);
+    return FollowCamIds[n - 1];
+}
+
+void Spectate_CycleFollowCam(bool backwards) {
+    uint n = Math::Clamp(S_SpectateFollowCam, 1, FollowCamIds.Length);
+    S_SpectateFollowCam = backwards ? (n == 1 ? FollowCamIds.Length : n - 1) : (n % FollowCamIds.Length) + 1;
+}
+
 void CamTarget_Update() {
     if (!S_CameraHook) { if (g_camHook !is null) CamTarget_RemoveHook(); return; }
     if (g_camHook is null) CamTarget_InstallHook();
     uint id = CamId_None;
     if (g_camWantId != CamId_None && CamTarget_GhostHasVis(Ghosts_FindByInstId(g_camWantId))) id = g_camWantId;
     g_camForcedId = id;
+    // Follow spectate: pick the vehicle cam (the engine would always use 0x12)
+    g_camForcedCamId = (g_specActive && S_SpectateCameraType == 1) ? Spectate_FollowCamId() : 0;
 }
 
 void CamTarget_Clear() {
     g_camWantId = CamId_None;
     g_camForcedId = CamId_None;
+    g_camForcedCamId = 0;
 }
 
 bool CamTarget_Active() { return g_camHook !is null && g_camForcedId != CamId_None; }

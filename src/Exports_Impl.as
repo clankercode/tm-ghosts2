@@ -78,6 +78,7 @@ namespace Ghosts2 {
 
     void SetLockAll(bool on) { Lock_Set(on); }
     void SetCameraType(uint camType) { Spectate_SetCameraType(camType); }
+    void SetFollowCam(uint cam) { S_SpectateFollowCam = Math::Clamp(cam, 1, 3); }   // Follow spectator camera: 1 far, 2 close, 3 internal
 
     bool Remove(uint instId) {
         for (uint i = 0; i < g_ghosts.Length; i++) {
