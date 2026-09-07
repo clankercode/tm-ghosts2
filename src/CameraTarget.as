@@ -130,6 +130,22 @@ const uint64 O_Nod_RefCount = 0x10;
 uint g_clipDrops = 0;
 string g_clipDropLastErr = "";
 
+// Stop-spectate without respawn: the UI config restore only reaches the engine on a later frame, and until then
+// the picker re-assigns the clip (it did so within the same frame in testing). So wait a few frames, drop, then keep
+// dropping for a short while if the slot refills; every refill added a reference, so each drop stays balanced.
+void Spectate_DropClipLater() {
+    for (uint i = 0; i < 3; i++) yield();
+    uint dropped = 0;
+    uint until = Time::Now + 1500;
+    while (Time::Now < until) {
+        if (g_specActive) return;
+        if (Spectate_DropClip()) dropped++;
+        else if (g_clipDropLastErr.Length > 0) { warn("Ghosts2: could not release the spectator clip (" + g_clipDropLastErr + "); the camera may stay on the ghost"); return; }
+        if (dropped >= 8) { warn("Ghosts2: spectator clip keeps getting re-picked; use Restart when you stop spectating"); return; }
+        yield();
+    }
+}
+
 bool Spectate_DropClip() {
     uint64 term = Terminal_Ptr();
     if (term == 0) { g_clipDropLastErr = "no terminal"; return false; }

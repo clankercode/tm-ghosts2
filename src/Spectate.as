@@ -92,8 +92,8 @@ void Spectate_StopEx(bool respawn) {
         if (respawn) {
             if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
         } else {
-            // No restart: release the terminal's spectator clip slot ourselves (see Spectate_DropClip).
-            if (!Spectate_DropClip() && g_clipDropLastErr.Length > 0) warn("Ghosts2: could not release the spectator clip (" + g_clipDropLastErr + "); the camera may stay on the ghost");
+            // No restart: release the terminal's spectator clip slot ourselves (see Spectate_DropClipLater).
+            startnew(Spectate_DropClipLater);
         }
     }
     // Chase / free cameras leave the camera system's auto target on the ghost even after the respawn.

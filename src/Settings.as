@@ -43,7 +43,7 @@ uint S_ScrubHideDelayMs = 1500;
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
 
-[Setting category="Spectate" name="Restart when you stop spectating" description="Forcing the spectator starts an engine camera clip on the ghost that only a (re)spawn of your car ends; without this the camera stays on the ghost after 'Stop spectating'. Restarts you and the ghosts together (same as Ghosts++)."]
+[Setting category="Spectate" name="Restart when you stop spectating" description="On: stopping restarts you and the ghosts together (same as Ghosts++). Off: Ghosts2 releases the engine's spectator camera clip itself and you carry on from where you are (no restart)."]
 bool S_SpectateRespawnOnStop = true;
 
 [Setting category="Spectate" name="Respawn delay (ms)" min=0 max=5000 description="Countdown before your car starts again after 'Stop spectating'."]

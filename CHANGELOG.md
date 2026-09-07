@@ -2,6 +2,7 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+- 2026-09-08: Stop spectating without a restart (setting Spectate → Restart when you stop spectating = off): Ghosts2 releases the terminal's spectator clip slot itself (`Spectate_DropClipLater`, ref-counted, a few frames after the UI config restore); export `StopSpectatingEx(respawn)`, pack `stop_spectating respawn=false`. Reset camera button also on the Playback tab.
 - 2026-09-08: Version 0.2.0; README screenshots (`tools/readme-shots.sh`); Ghosts tab "Reset camera" button.
 - 2026-09-08: Stop spectating also resets the camera system's auto target (`camsys+0x48`) to the local vehicle: with the Follow / FreeCam / Game cameras the spectator code aims that id at the ghost and neither clearing the UI config nor the respawn puts it back, so the camera kept following the ghost. Ghosts tab "Reset camera" button, export `ResetCamera`, pack `ghosts2.cam_reset` as a manual escape hatch.
 - 2026-09-08: Tooltips go through `AddSimpleTooltip` (`UI_Helpers.as`: wrapped text, explicit window width ≤ 400 px, snug for short messages); the camera tooltip lists one camera per line.
