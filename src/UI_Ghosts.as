@@ -160,6 +160,9 @@ void DrawPlaybackTab() {
     AddSimpleTooltip("Give every clock back to the game");
     UI::EndDisabled();
     UI::SameLine();
+    if (UI::Button(Icons::VideoCamera + " Reset camera##pb")) CamTarget_ResetToLocal();
+    AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
+    UI::SameLine();
     UI::AlignTextToFramePadding();
     UI::Text("\\$888" + members.Length + " started");
 

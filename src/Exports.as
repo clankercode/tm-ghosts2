@@ -14,6 +14,7 @@ namespace Ghosts2 {
     import void RemoveAll() from "Ghosts2";
     import bool Spectate(uint instId) from "Ghosts2";
     import void StopSpectating() from "Ghosts2";
+    import void StopSpectatingEx(bool respawn) from "Ghosts2";   // respawn=false: release the spectator clip instead
     import bool ResetCamera() from "Ghosts2";   // camera system auto target -> local vehicle (true if it changed)
     import Json::Value@ State() from "Ghosts2";
     import void ShowWindow(bool visible) from "Ghosts2";

@@ -72,7 +72,9 @@ void Spectate_CycleCameraType(bool backwards) {
     Spectate_SetCameraType(SpecCamTypes[idx]);
 }
 
-void Spectate_Stop() {
+void Spectate_Stop() { Spectate_StopEx(S_SpectateRespawnOnStop); }
+
+void Spectate_StopEx(bool respawn) {
     auto ui = UiAll();
     bool wasForced = g_specActive && g_specSaved && S_SpectateForceSpectator;
     if (ui !is null && g_specSaved) {
@@ -86,8 +88,13 @@ void Spectate_Stop() {
     // ghost. Clearing ForceSpectator/SpectatorForcedTarget does not stop that clip (it keeps pushing a forced
     // camera block every frame: camera stuck on the ghost). Only a (re)spawn of the local player ends it, which
     // is also what Ghosts++ does when leaving a ghost. Unspawn first so the ghosts restart with the player.
-    if (wasForced && S_SpectateRespawnOnStop) {
-        if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
+    if (wasForced) {
+        if (respawn) {
+            if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
+        } else {
+            // No restart: release the terminal's spectator clip slot ourselves (see Spectate_DropClip).
+            if (!Spectate_DropClip() && g_clipDropLastErr.Length > 0) warn("Ghosts2: could not release the spectator clip (" + g_clipDropLastErr + "); the camera may stay on the ghost");
+        }
     }
     // Chase / free cameras leave the camera system's auto target on the ghost even after the respawn.
     startnew(CamTarget_ResetAfterStop);

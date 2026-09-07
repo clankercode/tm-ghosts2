@@ -99,17 +99,50 @@ const uint64 O_Terminal_CamSys = 0x30;            // CGameTerminal: its CGameCam
 const uint64 O_CamSys_AutoId = 0x48;
 uint g_camResets = 0;
 
-uint64 CamSys_Ptr() {
+uint64 Terminal_Ptr() {
     auto pg = cast<CGameCtnPlayground>(App().CurrentPlayground);
     if (pg is null) return 0;
     uint64 terms = Dev::GetOffsetUint64(pg, uint16(O_Playground_Terminals));
     uint nTerms = Dev::GetOffsetUint32(pg, uint16(O_Playground_Terminals + 8));
     if (terms == 0 || nTerms == 0) return 0;
     uint64 term = Dev::ReadUInt64(terms);
-    if (!LooksLikeNod(term)) return 0;
+    return LooksLikeNod(term) ? term : 0;
+}
+
+uint64 CamSys_Ptr() {
+    uint64 term = Terminal_Ptr();
+    if (term == 0) return 0;
     uint64 cs = Dev::ReadUInt64(term + O_Terminal_CamSys);
-    if (!LooksLikeNod(cs)) return 0;
-    return cs;
+    return LooksLikeNod(cs) ? cs : 0;
+}
+
+// --- spectator clip drop (stop spectating without a respawn) ---------------------------------------
+//
+// While the spectator is forced, Playground_PickTerminalCamClip (0x140d7dc80) assigns the spectator camera clip
+// to terminal+0xa8 (ref-counted); the clip player keeps playing it while that slot still holds the clip, and
+// the respawn path (Terminal_ClearSpectateWant 0x140d7db30) is what releases the slot. Releasing it ourselves
+// (MwNod_ReleaseRef 0x1402818a0 is a plain decrement of nod+0x10) makes Playground_SyncSpectateClips stop the
+// clip on the next frame. The clip is also referenced from the terminal's clip list and the clip player, so the
+// refcount must stay >= 1 after the drop (terminal+0x100 is a weak reference). Research: 2026-09-07-RaceGhost-Runtime.md.
+
+const uint64 O_Terminal_SpectateClip = 0xa8;
+const uint64 O_Nod_RefCount = 0x10;
+uint g_clipDrops = 0;
+string g_clipDropLastErr = "";
+
+bool Spectate_DropClip() {
+    uint64 term = Terminal_Ptr();
+    if (term == 0) { g_clipDropLastErr = "no terminal"; return false; }
+    uint64 clip = Dev::ReadUInt64(term + O_Terminal_SpectateClip);
+    if (clip == 0) { g_clipDropLastErr = ""; return false; }
+    if (!LooksLikeNod(clip)) { g_clipDropLastErr = "clip slot is not a nod"; return false; }
+    uint rc = Dev::ReadUInt32(clip + O_Nod_RefCount);
+    if (rc < 2 || rc > 64) { g_clipDropLastErr = "clip refcount " + rc + " (expected 2..64)"; return false; }
+    Dev::Write(clip + O_Nod_RefCount, rc - 1);
+    Dev::Write(term + O_Terminal_SpectateClip, uint64(0));
+    g_clipDrops++;
+    g_clipDropLastErr = "";
+    return true;
 }
 
 // Put the camera back on the local vehicle if it is still aimed at something else. Returns true when it wrote.

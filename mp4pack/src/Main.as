@@ -76,7 +76,8 @@ namespace Ghosts2Mp4Pack {
             return Ghosts2::Spectate(instId) ? OkTrue() : Err("spectate failed (no UI config?)");
         }
         if (cmd == "stop_spectating") {
-            Ghosts2::StopSpectating();
+            if (args.HasKey("respawn")) Ghosts2::StopSpectatingEx(bool(args["respawn"]));
+            else Ghosts2::StopSpectating();
             return OkTrue();
         }
         if (cmd == "cam_reset") {
