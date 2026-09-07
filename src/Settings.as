@@ -25,6 +25,9 @@ uint S_ScrubStepMs = 100;
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
 
+[Setting category="Spectate" name="Camera hook (classic race)" description="Hook the camera target resolver so the chase cam follows the spectated ghost in the classic campaign race too (the engine ignores SpectatorForcedTarget there)."]
+bool S_CameraHook = true;
+
 [Setting category="Spectate" name="Camera type" min=0 max=2 description="SpectatorForceCameraType; Nadeo's replay cam loop cycles 0/1/2."]
 uint S_SpectateCameraType = 0;
 

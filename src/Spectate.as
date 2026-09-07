@@ -29,6 +29,9 @@ bool Spectate_Start(uint instId) {
     if (S_SpectateForceSpectator) ui.ForceSpectator = true;
     if (S_SpectateEndRoundSequence) ui.UISequence = CGamePlaygroundUIConfig::EUISequence::EndRound;
 
+    // Classic race: the UI config target is ignored by the camera; the hook forces it (no-op if disabled).
+    CamTarget_Set(instId);
+
     g_specActive = true;
     g_specInstId = instId;
     return true;
@@ -47,6 +50,7 @@ void Spectate_Stop() {
 
 // Forget the saved state without writing to the game (map change / plugin unload paths).
 void Spectate_Reset() {
+    CamTarget_Clear();
     g_specActive = false;
     g_specInstId = 0;
     g_specSaved = false;

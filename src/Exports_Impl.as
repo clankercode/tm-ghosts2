@@ -103,6 +103,10 @@ namespace Ghosts2 {
         }
         o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
+        o["camHook"] = g_camHook !is null;
+        o["camForcedId"] = g_camForcedId;
+        o["camHookWrites"] = g_camHookWrites;
+        o["camLastErr"] = g_camLastErr;
         return o;
     }
 

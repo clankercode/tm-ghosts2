@@ -13,6 +13,7 @@ void Main() {
 void Update(float dt) {
     Ghosts_Update();
     TimeCtl_Update(dt);
+    CamTarget_Update();
 }
 
 void OnDestroyed() { Cleanup(); }
@@ -21,6 +22,7 @@ void OnDisabled() { Cleanup(); }
 void Cleanup() {
     Scrubber_Close();
     TimeCtl_RemoveHook();
+    CamTarget_RemoveHook();
     // Leave the race as we found it: restore the UI config, drop our bookkeeping.
     Spectate_Stop();
     Ghosts_ForgetAll();
@@ -64,6 +66,7 @@ void DrawStateTab() {
     UI::Text("Tracked map uid: \\$888" + g_trackedMapUid);
     UI::Text("Status: \\$888" + g_status);
     UI::Text("Time control: \\$888" + (g_clockHook is null ? "hook off" : "hook on") + ", " + g_timeCtlUpdates + " updates, " + g_timeCtlWrites + " hook writes, " + g_clock.Length + " owned clock(s)" + (g_timeCtlLastErr.Length > 0 ? ", last error: " + g_timeCtlLastErr : ""));
+    UI::Text("Camera target: \\$888" + (g_camHook is null ? "hook off" : "hook on") + (g_camForcedId == CamId_None ? ", none" : ", forced id " + Text::Format("0x%08x", g_camForcedId)) + ", " + g_camHookWrites + " hook writes" + (g_camLastErr.Length > 0 ? ", last error: " + g_camLastErr : ""));
     UI::Separator();
     if (UI::Button("Open settings")) Meta::OpenSettings(Meta::ExecutingPlugin());
 }
