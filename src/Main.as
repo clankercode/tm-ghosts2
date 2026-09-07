@@ -60,6 +60,7 @@ void DrawStateTab() {
     UI::Text("Spectating: " + (g_specActive ? "\\$8f8inst " + g_specInstId : "\\$888no"));
     UI::Text("Tracked map uid: \\$888" + g_trackedMapUid);
     UI::Text("Status: \\$888" + g_status);
+    UI::Text("Time control: \\$888" + g_timeCtlUpdates + " updates, " + g_timeCtlWrites + " writes" + (g_timeCtlLastErr.Length > 0 ? ", last error: " + g_timeCtlLastErr : ""));
     UI::Separator();
     if (UI::Button("Open settings")) Meta::OpenSettings(Meta::ExecutingPlugin());
 }

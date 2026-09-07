@@ -82,6 +82,9 @@ namespace Ghosts2 {
         o["tracked"] = g_ghosts.Length;
         o["spectating"] = g_specActive;
         o["spectateInstId"] = g_specInstId;
+        o["timeCtlUpdates"] = g_timeCtlUpdates;
+        o["timeCtlWrites"] = g_timeCtlWrites;
+        o["timeCtlLastErr"] = g_timeCtlLastErr;
         return o;
     }
 
