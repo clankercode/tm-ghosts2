@@ -2,23 +2,8 @@
 // Socket usage: tm-mp4-control/tools/mp4call.py ghosts2.list (also: state, load_replay,
 // load_pb, load_medal, remove, remove_all, spectate, stop_spectating, show_window).
 
-namespace Mp4Control {
-    import bool RegisterPack(const string &in packId, Mp4Control::PackDispatch@ fn) from "Mp4Control";
-    import void UnregisterPack(const string &in packId) from "Mp4Control";
-}
-
-namespace Ghosts2 {
-    import Json::Value@ ListGhosts() from "Ghosts2";
-    import bool LoadReplay(const string &in path) from "Ghosts2";
-    import bool LoadPB() from "Ghosts2";
-    import bool LoadMedal(uint level) from "Ghosts2";
-    import bool Remove(uint instId) from "Ghosts2";
-    import void RemoveAll() from "Ghosts2";
-    import bool Spectate(uint instId) from "Ghosts2";
-    import void StopSpectating() from "Ghosts2";
-    import Json::Value@ State() from "Ghosts2";
-    import void ShowWindow(bool visible) from "Ghosts2";
-}
+// Imports come from the dependencies' `exports` files (Mp4Control/Exports.as, Ghosts2/Exports.as);
+// Openplanet compiles those into this module, so re-declaring them here is a duplicate-function error.
 
 namespace Ghosts2Mp4Pack {
     Json::Value@ Ok(Json::Value@ data) {
