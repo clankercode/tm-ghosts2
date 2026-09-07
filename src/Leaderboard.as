@@ -54,7 +54,7 @@ void LbFetchInner(uint offset) {
             LbEntry e;
             e.rank = info.Rank;
             e.login = info.Login;
-            e.name = string(info.DisplayName);
+            e.name = Text::StripFormatCodes(string(info.DisplayName));
             e.score = info.Score;
             e.fileName = string(info.FileName);
             e.url = info.ReplayUrl;
@@ -96,7 +96,7 @@ void LbLoadInner(uint rank) {
     if (e is null) { SetStatus("Leaderboard entry #" + rank + " is not in the fetched list.", true, true); return; }
     auto rules = CurrentRules();
     if (rules is null || rules.DataFileMgr is null) { SetStatus("No DataFileMgr (solo-only surface).", true, true); return; }
-    string label = "#" + e.rank + " " + e.name;
+    string label = "#" + e.rank + " " + (e.name.Length > 0 ? e.name : e.login);
     SetStatus("Downloading ghost " + label + " ...");
     auto task = rules.DataFileMgr.Ghost_Download(wstring(e.fileName), e.url);
     if (task is null) { SetStatus("Ghost_Download returned null for " + label, true, true); return; }
