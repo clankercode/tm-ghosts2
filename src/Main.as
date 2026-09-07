@@ -5,6 +5,9 @@ const string MenuTitle = "\\$dd5" + Icons::HandPointerO + "\\$z " + PluginName;
 
 void Main() {
     trace("Ghosts2 loaded");
+#if DEV
+    S_ShowWindow = true;  // dev builds: always start with the window open (agents cannot click the plugin menu)
+#endif
 }
 
 void Update(float dt) {
