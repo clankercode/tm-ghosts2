@@ -89,6 +89,8 @@ namespace Ghosts2 {
         o["spectateInstId"] = g_specInstId;
         o["timeCtlUpdates"] = g_timeCtlUpdates;
         o["timeCtlWrites"] = g_timeCtlWrites;
+        o["timeCtlHook"] = g_clockHook !is null;
+        o["timeCtlOwned"] = g_clock.Length;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
         return o;
     }
@@ -110,4 +112,7 @@ namespace Ghosts2 {
     bool Seek(uint instId, uint ghostTimeMs) { return TimeCtl_Seek(FindTracked(instId), ghostTimeMs); }
     bool SetPaused(uint instId, bool paused) { return TimeCtl_SetPaused(FindTracked(instId), paused); }
     bool SetSpeed(uint instId, float speed) { return TimeCtl_SetSpeed(FindTracked(instId), speed); }
+
+    bool ShowScrubber(uint instId, bool visible) { auto pg = FindTracked(instId); if (pg is null) return false; if (visible) Scrubber_Open(pg); else Scrubber_Close(); return true; }
+    bool Resync(uint instId) { auto pg = FindTracked(instId); if (pg is null) return false; TimeCtl_Release(pg); return true; }
 }

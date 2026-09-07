@@ -21,14 +21,14 @@ class PluginGhost {
     float speed = 1.0;
     float heldTime = 0.0;   // ms into the replay while paused / at non-1x speed
 
-    bool wasControlled = false;
+    uint64 clockRec = 0;    // engine record whose clock we own (0 = engine drives it)
 
     // engine ghosts (CTrackManiaRace.RaceGhosts, classic race): no CGameGhostScript, identified by nod address
     bool engine = false;
     CGameCtnGhost@ ctn;
     uint64 ctnPtr = 0;
 
-    bool Controlled() { return paused || speed != 1.0; }
+    bool Controlled() { return clockRec != 0; }
 
     PluginGhost(CGameGhostScript@ g, const string &in src) {
         @ghost = g;

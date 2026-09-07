@@ -1,18 +1,19 @@
-// Ghost playback time control.
+// Ghost playback time control — exact, via a hook on the engine's per-record clock update.
 //
 // Every ghost the engine plays has a 0x98-byte playback record (fields live on CTrackManiaRace, size 0x1278):
 //   record: +0x00 CGameCtnGhost*, +0x10 StartTime, +0x14 started, +0x18 elapsed (ghost time, written every
 //           frame), +0x28 GhostInstId, +0x40 flags, +0x48 vehicle-vis entry
-//   race+0xde0/+0xde8  records of RaceGhost_Add instances (script modes), paired 1:1 with the add-entry array
-//                      race+0xdd0/+0xdd8 (stride 0x18; +0x10 OffsetMs, +0x14 GhostInstId)
+//   race+0xde0/+0xde8   records of RaceGhost_Add instances (script modes), paired 1:1 with the add-entry array
+//                       race+0xdd0/+0xdd8 (stride 0x18; +0x10 OffsetMs, +0x14 GhostInstId)
 //   race+0x1080/+0x1088 records of the engine's RaceGhosts (classic campaign race; inst ids 0x0f00xxxx)
-// The race UpdateFrame (0x140ebad00) does, every frame, for every record in both lists:
-//   if (local player racing) record.StartTime = playerRaceStart - ghost->+0x40        // ghost+0x40 is -1 by default
-//   record.elapsed = max(0, now [+ entry.OffsetMs, script list only] - record.StartTime)
-// Levers: script instances -> entry.OffsetMs (signed, re-read every frame; independent of the player state).
-//         engine ghosts     -> CGameCtnGhost+0x40 while the player races, record.StartTime otherwise (both are
-//                              written; whichever the engine honours wins). Restored to -1 on release.
-// Evidence: research/mp4/2026-09-07-RaceGhost-Runtime.md ("Ghost time control", "Classic race").
+// Each frame the race UpdateFrame (0x140ebad00) rewrites record.StartTime from the player's race start and calls
+//   RaceGhostRecord_TickPlayback(mgr, rec, nowMs) -> RaceGhostRecord_UpdatePlaybackTime(mgr, rec, nowNs)
+//   which does  rec.elapsed = nowMs - rec.StartTime  and applies the ghost sample for that time to the vis.
+// Writing StartTime/OffsetMs from Update() means predicting the engine's next integer-ms frame step, which is
+// wrong by ±1-2 ms per frame and makes a paused car vibrate. So instead we hook UpdatePlaybackTime (RDX = record,
+// R8 = nowNs, exact) and set rec.StartTime = nowMs - wantedMs right there: elapsed and the applied sample are
+// exactly `wanted`, every tick, in both race types and whether or not the local player is racing.
+// Evidence: research/mp4/2026-09-07-RaceGhost-Runtime.md.
 
 const uint16 O_Race_AddEntries = 0xdd0;
 const uint16 O_Race_AddEntryCount = 0xdd8;
@@ -26,13 +27,84 @@ const uint64 O_Rec_Ghost = 0x0;
 const uint64 O_Rec_StartTime = 0x10;    // u64 at +0x10 = {StartTime, started}
 const uint64 O_Rec_GhostTime = 0x18;
 const uint64 O_Rec_InstId = 0x28;
-const uint64 O_Ghost_StartOffset = 0x40; // CGameCtnGhost: int, StartTime = playerRaceStart - this
+const uint64 O_Rec_Vis = 0x48;
 const uint MaxGhostRecords = 256;
+
+// RaceGhostRecord_UpdatePlaybackTime (ManiaPlanet.exe build 2019-11-19_18_50): image offset + prologue bytes.
+const uint64 UpdatePlaybackTime_RVA = 0x848f20;
+const string UpdatePlaybackTime_Prologue = "48 83 EC 58 8B 42 40";   // SUB RSP,0x58 ; MOV EAX,[RDX+0x40]  (7 bytes)
 
 // diagnostics (State tab / ghosts2.state)
 uint g_timeCtlUpdates = 0;
-uint g_timeCtlWrites = 0;
+uint g_timeCtlWrites = 0;      // hook writes
 string g_timeCtlLastErr = "";
+Dev::HookInfo@ g_clockHook;
+
+// --- the clock hook ---------------------------------------------------------
+
+// One entry per record whose clock we own. Written from Update(), consumed inside the hook (same thread).
+class ClockEntry {
+    uint64 rec = 0;
+    double wanted = 0;      // ms into the replay
+    float speed = 1.0;
+    bool paused = false;
+    uint lastNowMs = 0;
+}
+array<ClockEntry@> g_clock;
+
+ClockEntry@ Clock_Find(uint64 rec) {
+    for (uint i = 0; i < g_clock.Length; i++) {
+        if (g_clock[i].rec == rec) return g_clock[i];
+    }
+    return null;
+}
+
+// Hook callback: runs at the entry of RaceGhostRecord_UpdatePlaybackTime for every record, every frame.
+void OnUpdatePlaybackTime(uint64 rdx, uint64 r8) {
+    for (uint i = 0; i < g_clock.Length; i++) {
+        auto e = g_clock[i];
+        if (e.rec != rdx) continue;
+        uint nowMs = uint(r8 / 1000000);
+        if (e.lastNowMs != 0 && nowMs > e.lastNowMs && !e.paused) e.wanted += double(nowMs - e.lastNowMs) * e.speed;
+        e.lastNowMs = nowMs;
+        if (e.wanted < 0) e.wanted = 0;
+        uint w = uint(e.wanted);
+        if (w > nowMs) w = nowMs;
+        Dev::Write(rdx + O_Rec_StartTime, uint(nowMs - w));
+        g_timeCtlWrites++;
+        return;
+    }
+}
+
+bool TimeCtl_HookInstalled() { return g_clockHook !is null; }
+
+bool TimeCtl_InstallHook() {
+    if (g_clockHook !is null) return true;
+    uint64 ptr = Dev::BaseAddress() + UpdatePlaybackTime_RVA;
+    string bytes = "";
+    try {
+        for (uint i = 0; i < 7; i++) bytes += (i > 0 ? " " : "") + Text::Format("%02X", Dev::ReadUInt8(ptr + i));
+    } catch { g_timeCtlLastErr = "hook site unreadable"; return false; }
+    if (bytes != UpdatePlaybackTime_Prologue) {
+        g_timeCtlLastErr = "hook site mismatch (" + bytes + "), time control disabled";
+        warn("Ghosts2: " + g_timeCtlLastErr);
+        return false;
+    }
+    @g_clockHook = Dev::Hook(ptr, 2, "OnUpdatePlaybackTime", Dev::PushRegisters::SSE);
+    if (g_clockHook is null) { g_timeCtlLastErr = "Dev::Hook failed"; warn("Ghosts2: " + g_timeCtlLastErr); return false; }
+    trace("Ghosts2: playback clock hook installed at " + Text::FormatPointer(ptr));
+    return true;
+}
+
+void TimeCtl_RemoveHook() {
+    if (g_clockHook !is null) {
+        Dev::Unhook(g_clockHook);
+        @g_clockHook = null;
+    }
+    g_clock.RemoveRange(0, g_clock.Length);
+}
+
+// --- record lookup ----------------------------------------------------------
 
 uint64 SafeU64(uint64 addr) {
     try { return Dev::SafeReadUInt64(addr); } catch { return 0; }
@@ -114,7 +186,7 @@ bool TimeCtl_Resolve(PluginGhost@ pg, GhostSlot@ slot) {
 }
 
 bool TimeCtl_Available() {
-    return S_TimeControl && CurrentRace() !is null;
+    return S_TimeControl && g_clockHook !is null && CurrentRace() !is null;
 }
 
 // Current time into the replay (ms) as the engine computed it this frame; -1 when unknown / not started.
@@ -124,93 +196,84 @@ int TimeCtl_GhostTime(PluginGhost@ pg) {
     return slot.ghostTime;
 }
 
-int TimeCtl_ReadGhostStartOffset(uint64 ghostNod) {
-    return int(uint(SafeU64(ghostNod + O_Ghost_StartOffset) & 0xffffffff));
-}
+// --- control ----------------------------------------------------------------
 
-// Makes the ghost be `ghostTimeMs` into its replay on the next frame. `dtMs` = the frame step the engine will
-// add before that frame (0 for a one-shot seek).
-bool TimeCtl_WriteGhostTime(PluginGhost@ pg, uint ghostTimeMs, float dtMs) {
+// Takes ownership of the ghost's clock (idempotent). Returns the entry or null when the record is unknown.
+ClockEntry@ TimeCtl_Own(PluginGhost@ pg) {
+    if (!TimeCtl_Available() || pg is null) return null;
     GhostSlot slot;
-    if (!TimeCtl_Resolve(pg, slot)) { g_timeCtlLastErr = "no engine record for " + pg.nickname; return false; }
-    if (!slot.started) { g_timeCtlLastErr = pg.nickname + " not started"; return false; }
-    if (slot.entry != 0) {
-        auto rules = CurrentRules();
-        uint now = rules is null ? 0 : uint(rules.Now);
-        if (now == 0) { g_timeCtlLastErr = "rules.Now == 0"; return false; }
-        int offset = int(ghostTimeMs) - (int(now) - int(slot.startTime));
-        Dev::Write(slot.entry + O_Entry_OffsetMs, uint(offset));
-    } else {
-        // now (as of the last tick) == StartTime + elapsed; the engine adds dtMs before recomputing elapsed.
-        int delta = int(ghostTimeMs) - slot.ghostTime - int(dtMs);
-        int startOffset = TimeCtl_ReadGhostStartOffset(slot.ghostNod);
-        Dev::Write(slot.ghostNod + O_Ghost_StartOffset, uint(startOffset + delta));   // honoured while the player races
-        Dev::Write(slot.rec + O_Rec_StartTime, uint(int(slot.startTime) - delta));      // honoured otherwise
+    if (!TimeCtl_Resolve(pg, slot) || !slot.started) return null;
+    auto e = Clock_Find(slot.rec);
+    if (e is null) {
+        @e = ClockEntry();
+        e.rec = slot.rec;
+        e.wanted = double(slot.ghostTime < 0 ? 0 : slot.ghostTime);
+        g_clock.InsertLast(e);
     }
-    g_timeCtlWrites++;
-    return true;
+    pg.clockRec = slot.rec;
+    e.speed = pg.speed;
+    e.paused = pg.paused;
+    return e;
 }
 
-// Engine ghosts: put CGameCtnGhost+0x40 back to its default so the next respawn starts the ghost normally.
+// Gives the clock back to the engine (the ghost snaps to the player's race time, as the engine intends).
 void TimeCtl_Release(PluginGhost@ pg) {
-    if (pg is null || !pg.engine) return;
-    GhostSlot slot;
-    if (TimeCtl_Resolve(pg, slot) && slot.ghostNod != 0) Dev::Write(slot.ghostNod + O_Ghost_StartOffset, uint(0xffffffff));
+    if (pg is null) return;
+    pg.paused = false;
+    pg.speed = 1.0;
+    for (uint i = 0; i < g_clock.Length; i++) {
+        if (g_clock[i].rec == pg.clockRec) { g_clock.RemoveAt(i); break; }
+    }
+    pg.clockRec = 0;
 }
 
 bool TimeCtl_Seek(PluginGhost@ pg, uint ghostTimeMs) {
-    if (!TimeCtl_Available() || pg is null) return false;
+    auto e = TimeCtl_Own(pg);
+    if (e is null) return false;
+    e.wanted = double(ghostTimeMs);
     pg.heldTime = float(ghostTimeMs);
-    return TimeCtl_WriteGhostTime(pg, ghostTimeMs, 0.0);
+    return true;
 }
 
 bool TimeCtl_SetPaused(PluginGhost@ pg, bool paused) {
-    if (!TimeCtl_Available() || pg is null) return false;
-    if (paused == pg.paused) return true;
-    if (paused && !pg.Controlled()) {
-        int t = TimeCtl_GhostTime(pg);
-        if (t < 0) return false;
-        pg.heldTime = float(t);
-    }
+    if (pg is null) return false;
     pg.paused = paused;
-    return true;
+    return TimeCtl_Own(pg) !is null;
 }
 
 bool TimeCtl_SetSpeed(PluginGhost@ pg, float speed) {
-    if (!TimeCtl_Available() || pg is null) return false;
-    if (speed < 0.0 || speed > 16.0) return false;
-    if (speed != 1.0 && !pg.Controlled()) {
-        int t = TimeCtl_GhostTime(pg);
-        if (t < 0) return false;
-        pg.heldTime = float(t);
-    }
+    if (pg is null || speed < 0.0 || speed > 16.0) return false;
     pg.speed = speed;
-    return true;
+    return TimeCtl_Own(pg) !is null;
 }
 
-void TimeCtl_UpdateList(array<PluginGhost@>@ list, float dt) {
+// Per frame: keep entries in sync with the ghosts (records move when the engine rebuilds them on respawn; an
+// owned clock whose record vanished is dropped, i.e. the ghost restarts with the player like the engine wants).
+void TimeCtl_UpdateList(array<PluginGhost@>@ list) {
     for (uint i = 0; i < list.Length; i++) {
         auto pg = list[i];
-        bool controlled = pg.Controlled();
-        if (!controlled) {
-            if (pg.wasControlled) TimeCtl_Release(pg);
-            pg.wasControlled = false;
+        if (pg.clockRec == 0) continue;
+        GhostSlot slot;
+        if (!TimeCtl_Resolve(pg, slot) || slot.rec != pg.clockRec) {
+            TimeCtl_Release(pg);
             continue;
         }
-        pg.wasControlled = true;
-        if (!pg.paused) {
-            pg.heldTime += dt * pg.speed;
-            if (pg.heldTime < 0.0) pg.heldTime = 0.0;
-        }
-        TimeCtl_WriteGhostTime(pg, uint(pg.heldTime), dt);
+        auto e = Clock_Find(pg.clockRec);
+        if (e is null) { pg.clockRec = 0; continue; }
+        e.speed = pg.speed;
+        e.paused = pg.paused;
+        pg.heldTime = float(e.wanted);
     }
 }
 
-// Per frame: hold or advance the clock of every controlled ghost. Releasing control (not paused, speed 1)
-// stops writing; the ghost continues from wherever it is at normal speed.
 void TimeCtl_Update(float dt) {
     g_timeCtlUpdates++;
-    if (!S_TimeControl) return;
-    if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts, dt);
-    if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts, dt);
+    if (!S_TimeControl) {
+        if (g_clockHook !is null) TimeCtl_RemoveHook();
+        return;
+    }
+    if (g_clockHook is null && g_timeCtlLastErr.Length == 0) TimeCtl_InstallHook();
+    if (g_clockHook is null) return;
+    if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts);
+    if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts);
 }

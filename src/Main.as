@@ -19,8 +19,8 @@ void OnDestroyed() { Cleanup(); }
 void OnDisabled() { Cleanup(); }
 
 void Cleanup() {
-    // give engine ghosts their default start offset back before we forget them
-    for (uint i = 0; i < g_engineGhosts.Length; i++) TimeCtl_Release(g_engineGhosts[i]);
+    Scrubber_Close();
+    TimeCtl_RemoveHook();
     // Leave the race as we found it: restore the UI config, drop our bookkeeping.
     Spectate_Stop();
     Ghosts_ForgetAll();
@@ -33,6 +33,7 @@ void RenderMenu() {
 }
 
 void RenderInterface() {
+    DrawScrubberWindow();
     if (!S_ShowWindow) return;
     UI::SetNextWindowSize(640, 420, UI::Cond::FirstUseEver);
     UI::SetNextWindowPos(int(Display::GetWidth() - 660), 40, UI::Cond::FirstUseEver);
@@ -62,7 +63,7 @@ void DrawStateTab() {
     UI::Text("Spectating: " + (g_specActive ? "\\$8f8inst " + g_specInstId : "\\$888no"));
     UI::Text("Tracked map uid: \\$888" + g_trackedMapUid);
     UI::Text("Status: \\$888" + g_status);
-    UI::Text("Time control: \\$888" + g_timeCtlUpdates + " updates, " + g_timeCtlWrites + " writes" + (g_timeCtlLastErr.Length > 0 ? ", last error: " + g_timeCtlLastErr : ""));
+    UI::Text("Time control: \\$888" + (g_clockHook is null ? "hook off" : "hook on") + ", " + g_timeCtlUpdates + " updates, " + g_timeCtlWrites + " hook writes, " + g_clock.Length + " owned clock(s)" + (g_timeCtlLastErr.Length > 0 ? ", last error: " + g_timeCtlLastErr : ""));
     UI::Separator();
     if (UI::Button("Open settings")) Meta::OpenSettings(Meta::ExecutingPlugin());
 }

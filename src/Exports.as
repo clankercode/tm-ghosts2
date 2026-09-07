@@ -16,4 +16,8 @@ namespace Ghosts2 {
     import bool Seek(uint instId, uint ghostTimeMs) from "Ghosts2";
     import bool SetPaused(uint instId, bool paused) from "Ghosts2";
     import bool SetSpeed(uint instId, float speed) from "Ghosts2";
+    // Hands the clock back to the game (ghost snaps to the player's race time).
+    import bool Resync(uint instId) from "Ghosts2";
+    // Opens (visible=true) or closes the scrubber strip for a ghost.
+    import bool ShowScrubber(uint instId, bool visible) from "Ghosts2";
 }

@@ -149,24 +149,30 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         if (!pg.engine && pg.instId == 0) continue;
         UI::PushID(idPrefix + i);
         int t = TimeCtl_GhostTime(pg);
-        UI::Text(pg.nickname + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))));
+        UI::AlignTextToFramePadding();
+        UI::Text(pg.nickname);
         UI::SameLine();
         UI::BeginDisabled(t < 0);
-        if (UI::Button(pg.paused ? Icons::Play + "##pp" : Icons::Pause + "##pp")) TimeCtl_SetPaused(pg, !pg.paused);
-        if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause (holds StartTime every frame)");
-        UI::SameLine();
-        array<float> speeds = {0.25, 0.5, 1.0, 2.0};
-        for (uint s = 0; s < speeds.Length; s++) {
-            if (s > 0) UI::SameLine();
-            bool active = pg.speed == speeds[s];
-            if (UI::Button((active ? "\\$8f8" : "") + Text::Format("%.2gx", speeds[s]) + "##spd" + s)) TimeCtl_SetSpeed(pg, speeds[s]);
+        bool scrubOpen = g_scrubGhost is pg;
+        if (UI::Button((scrubOpen ? "\\$8f8" : "") + Icons::Sliders + "##scrub")) {
+            if (scrubOpen) Scrubber_Close(); else Scrubber_Open(pg);
         }
+        if (UI::IsItemHovered()) UI::SetTooltip(scrubOpen ? "Close the scrubber" : "Open the scrubber (seek / step / speed)");
         UI::SameLine();
-        UI::SetNextItemWidth(220);
-        int maxT = pg.raceTime > 0 ? int(pg.raceTime) : 60000;
-        int seek = UI::SliderInt("##seek", t < 0 ? 0 : t, 0, maxT);
-        if (UI::IsItemActive() && seek != t) TimeCtl_Seek(pg, uint(seek));
+        if (UI::Button(pg.paused ? Icons::Play + "##pp" : Icons::Pause + "##pp")) TimeCtl_SetPaused(pg, !pg.paused);
+        if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
+        UI::SameLine();
+        if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) TimeCtl_SetSpeed(pg, NextSpeed(pg.speed));
+        if (UI::IsItemHovered()) UI::SetTooltip("Playback speed (click to cycle)");
+        UI::SameLine();
+        UI::BeginDisabled(!pg.Controlled());
+        if (UI::Button(Icons::Undo + "##sync")) TimeCtl_Release(pg);
+        if (UI::IsItemHovered()) UI::SetTooltip("Give the clock back to the game");
         UI::EndDisabled();
+        UI::EndDisabled();
+        UI::SameLine();
+        UI::AlignTextToFramePadding();
+        UI::Text("\\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + (pg.Controlled() ? "  \\$8f8" + Icons::Clock : ""));
         UI::PopID();
     }
 }

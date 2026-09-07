@@ -78,6 +78,14 @@ namespace Ghosts2Mp4Pack {
             uint instId = uint(args.Get("instId", 0));
             return Ghosts2::SetSpeed(instId, float(double(args.Get("speed", 1.0)))) ? OkTrue() : Err("speed failed (unknown instId, not started, or speed outside 0..16)");
         }
+        if (cmd == "scrubber") {
+            uint instId = uint(args.Get("instId", 0));
+            return Ghosts2::ShowScrubber(instId, bool(args.Get("visible", true))) ? OkTrue() : Err("unknown instId");
+        }
+        if (cmd == "resync") {
+            uint instId = uint(args.Get("instId", 0));
+            return Ghosts2::Resync(instId) ? OkTrue() : Err("unknown instId");
+        }
         if (cmd == "show_window") {
             Ghosts2::ShowWindow(bool(args.Get("visible", true)));
             return OkTrue();
