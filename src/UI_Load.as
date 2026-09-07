@@ -26,7 +26,7 @@ void DrawLoadTab() {
     UI::SameLine();
     UI::SetNextItemWidth(UI::GetContentRegionAvail().x);
     bool changed = false;
-    string typed = UI::InputText("##g2-dir", g_browseDir, changed);
+    string typed = UI::InputText("##g2-dir", g_browseDir, changed, UI::InputTextFlags::EnterReturnsTrue);
     if (changed) Browse_Goto(typed);
 
     if (!UI::BeginChild("g2-browse", vec2(0, 0))) {
