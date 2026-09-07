@@ -28,11 +28,26 @@ bool S_TimeControl = true;
 [Setting category="Time control" name="Scrubber step (ms)" min=10 max=5000 description="Step size of the scrubber's back/forward buttons at 1x speed; scales with playback speed (min 1 ms)."]
 uint S_ScrubStepMs = 100;
 
-[Setting hidden]
-bool S_ScrubLockAll = false;
+[Setting category="Scrubber" name="Lock all ghosts by default" description="Start with the padlock on: the scrubber drives every ghost together and keeps them in sync (toggle on the scrubber)."]
+bool S_ScrubLockDefault = true;
+
+[Setting category="Scrubber" name="Show during the race countdown" description="Ghosts++ behaviour: the scrubber is visible while a ghost is loaded and the race has not started yet, hides once you start driving."]
+bool S_ScrubShowBeforeStart = true;
+
+[Setting category="Scrubber" name="Auto-hide" description="Hide the scrubber while driving; it comes back while spectating or when the mouse hovers its area (and stays for the hide delay)."]
+bool S_ScrubAutoHide = true;
+
+[Setting category="Scrubber" name="Hide delay (ms)" min=0 max=10000 description="How long the scrubber stays visible after the mouse leaves it."]
+uint S_ScrubHideDelayMs = 1500;
 
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
+
+[Setting category="Spectate" name="Restart when you stop spectating" description="Forcing the spectator starts an engine camera clip on the ghost that only a (re)spawn of your car ends; without this the camera stays on the ghost after 'Stop spectating'. Restarts you and the ghosts together (same as Ghosts++)."]
+bool S_SpectateRespawnOnStop = true;
+
+[Setting category="Spectate" name="Respawn delay (ms)" min=0 max=5000 description="Countdown before your car starts again after 'Stop spectating'."]
+uint S_SpectateRespawnDelayMs = 1500;
 
 [Setting category="Spectate" name="Camera hook (classic race)" description="Hook the camera target resolver so the chase cam follows the spectated ghost in the classic campaign race too (the engine ignores SpectatorForcedTarget there)."]
 bool S_CameraHook = true;

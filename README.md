@@ -24,7 +24,11 @@ rather than the TM2020 ghost-clip manager.
     and null ghosts notify.
 - **Spectate** — writes the ghost's instance `MwId` to `UIAll.SpectatorForcedTarget` (what
   Nadeo's `UISequences::SetReplayGhostFocus` does), optionally with `ForceSpectator` and
-  `UISequence = EndRound`. Stopping restores the previous values.
+  `UISequence = EndRound`. Stopping restores the previous values and **restarts you and the
+  ghosts** (setting *Spectate → Restart when you stop spectating*): forcing the spectator makes
+  the engine play a spectator camera clip on the ghost (`CGameCtnMediaClipPlayer` on the game
+  terminal) that clearing the UI config never stops; only a (re)spawn of your car does. Ghosts++
+  does the same.
 - **Playback control** — per ghost (plugin-loaded instances in script modes, and the engine's own
   medal/PB ghosts in the classic campaign race): pause/resume, speed (¼x … 4x), step ±100 ms, seek,
   plus a Ghosts++-style scrubber strip at the bottom of the screen. Ghosts2 hooks the engine's
@@ -64,11 +68,21 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
 
+## Scrubber
+
+The strip at the bottom of the screen opens by itself for the first ghost you load and follows the Ghosts++
+rules: it is visible during the race countdown, while you spectate and while you drag it; otherwise it hides
+1.5 s after the mouse leaves it, and hovering the (invisible) strip area brings it back. Settings *Scrubber →
+Show during the race countdown / Auto-hide / Hide delay*. Right-click on the time bar toggles pause; the speed
+button's right-click cycles speeds backwards. With the lock on, the eye shows whichever ghost is being spectated
+and stops it.
+
 ## Ghost lock
 
-The padlock on the scrubber locks every started ghost together: the scrubber (and the per-ghost playback buttons)
-then pause, seek, step and change speed for all of them, and each frame the others mirror the scrubber ghost's
-clock, so they stay in sync and a ghost that starts later joins at the group time. Pack: `ghosts2.lock all=true|false`.
+The padlock on the scrubber (on by default, setting *Scrubber → Lock all ghosts by default*) locks every started
+ghost together: the scrubber, the per-ghost playback buttons and the exports/pack commands then pause, seek, step
+and change speed for all of them, and each frame the others mirror the scrubber ghost's clock, so they stay in sync
+and a ghost that starts later joins at the group time. Pack: `ghosts2.lock all=true|false`.
 
 ## Leaderboard ghosts
 
@@ -102,6 +116,10 @@ survives. Setting: **Spectate → Camera hook (classic race)**. Both hooks are r
   inside the Replays folder (that is how Nadeo's own save-ghost UI calls it).
 - Only ghosts loaded *by this plugin* can be removed individually, spectated or saved —
   engine ghosts have no instance id and no `CGameGhostScript` handle we can reach.
+- **`RaceGhost_Add` takes effect at the next (re)spawn.** The engine keeps two add lists: the
+  script-facing one (`race+0x1d0`, where Add/Remove act) and the live copy (`race+0xdd0`, rebuilt
+  from it when the player spawns, together with the playback records). A ghost added mid-run has
+  no playback until you restart; Ghosts2 tracks (and, after a reload, adopts) ghosts from both lists.
 
 ## Notes for agents
 

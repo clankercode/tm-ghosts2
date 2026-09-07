@@ -4,9 +4,41 @@ PluginGhost@ g_scrubGhost;
 bool g_scrubDragging = false;     // slider held: the clock is frozen at the slider value until release
 bool g_scrubWasPaused = false;
 int g_scrubDragValue = -1;
+uint g_scrubLastHover = 0;          // Time::Now when the mouse was last over the strip
+vec2 g_scrubLastSize = vec2(0, 0);  // last drawn window size (hover test while the strip is hidden)
 
 void Scrubber_Open(PluginGhost@ pg) {
     @g_scrubGhost = pg;
+    g_scrubLastHover = Time::Now;
+}
+
+// A loaded ghost gets the scrubber by default (Ghosts++: it shows up during the countdown and hides once you drive).
+void Scrubber_AutoOpen(PluginGhost@ pg) {
+    if (g_scrubGhost is null) Scrubber_Open(pg);
+}
+
+bool Scrubber_InCountdown() {
+    auto rules = CurrentRules();
+    if (rules is null) return false;
+    string login = GetLocalLogin();
+    for (uint i = 0; i < rules.Players.Length; i++) {
+        auto p = rules.Players[i];
+        if (p is null || p.User is null || string(p.User.Login) != login) continue;
+        return int(p.RaceStartTime) > int(rules.Now);
+    }
+    return false;
+}
+
+// Ghosts++ visibility rules: always while spectating or dragging, during the race countdown, and for
+// S_ScrubHideDelayMs after the mouse was last over the strip (hovering the hidden strip's area brings it back).
+bool Scrubber_ShouldShow(float w) {
+    if (!S_ScrubAutoHide || g_scrubDragging || g_specActive) return true;
+    if (S_ScrubShowBeforeStart && Scrubber_InCountdown()) return true;
+    vec2 m = UI::GetMousePos();
+    vec2 p0 = vec2((Display::GetWidth() - w) / 2, Display::GetHeight() - 120);
+    float h = g_scrubLastSize.y > 0 ? g_scrubLastSize.y : 64.0f;
+    if (m.x >= p0.x && m.x <= p0.x + w && m.y >= p0.y && m.y <= p0.y + h) g_scrubLastHover = Time::Now;
+    return Time::Now - g_scrubLastHover < S_ScrubHideDelayMs;
 }
 
 void Scrubber_Close() {
@@ -65,6 +97,7 @@ void DrawScrubberWindow() {
     if (t > maxT) maxT = t;
 
     float w = Math::Min(760.0f, Display::GetWidth() * 0.6f);
+    if (!Scrubber_ShouldShow(w)) return;
     UI::SetNextWindowSize(int(w), 0, UI::Cond::Always);
     UI::SetNextWindowPos(int((Display::GetWidth() - w) / 2), int(Display::GetHeight() - 120), UI::Cond::Always);
     int flags = UI::WindowFlags::NoTitleBar | UI::WindowFlags::NoResize | UI::WindowFlags::NoCollapse
@@ -96,13 +129,19 @@ void DrawScrubberWindow() {
     UI::EndDisabled();
     UI::EndDisabled();
     UI::SameLine();
-    bool isSpec = g_specActive && g_specInstId == pg.instId && pg.instId != 0;
+    bool locked = Lock_Enabled();
+    // Locked: the strip drives the whole group, so the eye reflects whichever ghost is being spectated.
+    bool anySpec = g_specActive && g_specInstId != 0;
+    bool isSpec = anySpec && (locked || g_specInstId == pg.instId);
     if (UI::Button((isSpec ? Icons::Eye : Icons::EyeSlash) + "##spec", btn)) {
         if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
     }
-    if (UI::IsItemHovered()) UI::SetTooltip(isSpec ? "Stop spectating" : "Spectate this ghost");
+    if (UI::IsItemHovered()) {
+        string specName = "";
+        if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.nickname + ")"; }
+        UI::SetTooltip(isSpec ? "Stop spectating" + specName : "Spectate this ghost");
+    }
     UI::SameLine();
-    bool locked = Lock_Enabled();
     uint nMembers = locked ? Lock_Members().Length : 0;
     if (UI::Button((locked ? "\\$8f8" + Icons::Lock : Icons::Unlock) + "##lock", btn)) Lock_Set(!locked);
     if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Unlock: control ghosts individually again" : "Lock all ghosts: this scrubber drives every ghost and keeps them in sync");
@@ -126,6 +165,7 @@ void DrawScrubberWindow() {
     string fmt = t < 0 ? "-" : FormatTime(uint(t));
     float shown = g_scrubDragging && g_scrubDragValue >= 0 ? float(g_scrubDragValue) : float(t < 0 ? 0 : t);
     float v = UI::SliderFloat("##g2-scrub-slider", shown, 0.0f, float(maxT), fmt, UI::SliderFlags::NoInput);
+    bool sliderHovered = UI::IsItemHovered();
     if (UI::IsItemActive()) {
         // Hold the clock while the slider is held, otherwise the engine advances it between our seeks and the
         // ghost flips between the slider value and one tick ahead.
@@ -143,12 +183,14 @@ void DrawScrubberWindow() {
         Scrubber_EndDrag();
     }
     UI::EndDisabled();
-    // right click anywhere on the strip toggles pause (MP4 Openplanet has no IsWindowHovered; test the rect)
-    if (avail && t >= 0 && UI::IsMouseClicked(UI::MouseButton::Right)) {
+    // right click on the time bar toggles pause (the buttons keep their own right-click meanings)
+    if (avail && t >= 0 && sliderHovered && !g_scrubDragging && UI::IsMouseClicked(UI::MouseButton::Right)) Ctl_SetPaused(pg, !pg.paused);
+    // remember the drawn rect for the hover test while hidden, and keep the strip up while the mouse is on it
+    {
         vec2 m = UI::GetMousePos();
         vec2 p0 = UI::GetWindowPos();
-        vec2 sz = UI::GetWindowSize();
-        if (m.x >= p0.x && m.y >= p0.y && m.x <= p0.x + sz.x && m.y <= p0.y + sz.y) Ctl_SetPaused(pg, !pg.paused);
+        g_scrubLastSize = UI::GetWindowSize();
+        if (m.x >= p0.x && m.y >= p0.y && m.x <= p0.x + g_scrubLastSize.x && m.y <= p0.y + g_scrubLastSize.y) g_scrubLastHover = Time::Now;
     }
     UI::End();
 }

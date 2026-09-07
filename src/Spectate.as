@@ -15,8 +15,11 @@ bool Spectate_Start(uint instId) {
     if (instId == 0) return false;
     auto ui = UiAll();
     if (ui is null) return false;
-    if (!CamTarget_GhostHasVis(Ghosts_FindByInstId(instId))) {
-        g_status = "Ghost has no playback yet: respawn (start the race) so it is spawned, then spectate.";
+    auto pg = Ghosts_FindByInstId(instId);
+    if (!CamTarget_GhostHasVis(pg)) {
+        g_status = pg !is null && TimeCtl_GhostTime(pg) >= 0
+            ? "Ghost has finished: seek it back (or respawn) before spectating."
+            : "Ghost has no playback yet: respawn (start the race) so it is spawned, then spectate.";
         warn("Ghosts2: " + g_status);
         return false;
     }
@@ -44,6 +47,7 @@ bool Spectate_Start(uint instId) {
 
 void Spectate_Stop() {
     auto ui = UiAll();
+    bool wasForced = g_specActive && g_specSaved && S_SpectateForceSpectator;
     if (ui !is null && g_specSaved) {
         ui.SpectatorForcedTarget = MwId(g_specPrevTarget);
         ui.SpectatorForceCameraType = g_specPrevCamType;
@@ -51,6 +55,13 @@ void Spectate_Stop() {
         if (S_SpectateEndRoundSequence) ui.UISequence = g_specPrevSequence;
     }
     Spectate_Reset();
+    // Forcing the spectator made the terminal's CGameCtnMediaClipPlayer play a spectator camera clip aimed at the
+    // ghost. Clearing ForceSpectator/SpectatorForcedTarget does not stop that clip (it keeps pushing a forced
+    // camera block every frame: camera stuck on the ghost). Only a (re)spawn of the local player ends it, which
+    // is also what Ghosts++ does when leaving a ghost. Unspawn first so the ghosts restart with the player.
+    if (wasForced && S_SpectateRespawnOnStop) {
+        if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
+    }
 }
 
 // Forget the saved state without writing to the game (map change / plugin unload paths).

@@ -116,7 +116,7 @@ namespace Ghosts2 {
         }
         o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
-        o["lockAll"] = S_ScrubLockAll;
+        o["lockAll"] = Lock_Enabled();
         o["camHook"] = g_camHook !is null;
         o["camForcedId"] = g_camForcedId;
         o["camHookWrites"] = g_camHookWrites;
@@ -129,10 +129,10 @@ namespace Ghosts2 {
     PluginGhost@ FindTracked(uint instId) { return Ghosts_FindByInstId(instId); }
 
     int GetGhostTime(uint instId) { return TimeCtl_GhostTime(FindTracked(instId)); }
-    bool Seek(uint instId, uint ghostTimeMs) { return TimeCtl_Seek(FindTracked(instId), ghostTimeMs); }
-    bool SetPaused(uint instId, bool paused) { return TimeCtl_SetPaused(FindTracked(instId), paused); }
-    bool SetSpeed(uint instId, float speed) { return TimeCtl_SetSpeed(FindTracked(instId), speed); }
+    bool Seek(uint instId, uint ghostTimeMs) { auto pg = FindTracked(instId); if (pg is null || TimeCtl_GhostTime(pg) < 0) return false; Ctl_Seek(pg, ghostTimeMs); return true; }
+    bool SetPaused(uint instId, bool paused) { auto pg = FindTracked(instId); if (pg is null || TimeCtl_GhostTime(pg) < 0) return false; Ctl_SetPaused(pg, paused); return true; }
+    bool SetSpeed(uint instId, float speed) { auto pg = FindTracked(instId); if (pg is null || speed < 0.0 || speed > 16.0) return false; Ctl_SetSpeed(pg, speed); return true; }
 
     bool ShowScrubber(uint instId, bool visible) { auto pg = FindTracked(instId); if (pg is null) return false; if (visible) Scrubber_Open(pg); else Scrubber_Close(); return true; }
-    bool Resync(uint instId) { auto pg = FindTracked(instId); if (pg is null) return false; TimeCtl_Release(pg); return true; }
+    bool Resync(uint instId) { auto pg = FindTracked(instId); if (pg is null) return false; Ctl_Release(pg); return true; }
 }

@@ -100,11 +100,19 @@ void Ghosts_SyncEngine() {
 // (added before a plugin reload, or by the game's own leaderboard dialog) are adopted so they get the same
 // spectate / time control / remove actions. The CGameGhostScript handle is recovered from DataFileMgr.Ghosts by
 // nickname + time when possible (needed for re-adding after the mode wipes ghosts).
+// Two lists: the script-facing add list (race+0x1d0: RaceGhost_Add lands here immediately) and the live copy
+// (race+0xdd0) the engine rebuilds from it at every (re)spawn. A ghost added since the last spawn is only in the
+// first, one removed since the last spawn only in the second (still visible until the next spawn); read both.
 void Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
     auto race = CurrentRace();
     if (race is null) return;
-    uint64 entries = Dev::GetOffsetUint64(race, O_Race_AddEntries);
-    uint nEntries = uint(Dev::GetOffsetUint64(race, O_Race_AddEntryCount) & 0xffffffff);
+    Ghosts_AdoptList(rules, race, O_Race_ScriptAddEntries, O_Race_ScriptAddEntryCount);
+    Ghosts_AdoptList(rules, race, O_Race_AddEntries, O_Race_AddEntryCount);
+}
+
+void Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16 listOff, uint16 countOff) {
+    uint64 entries = Dev::GetOffsetUint64(race, listOff);
+    uint nEntries = uint(Dev::GetOffsetUint64(race, countOff) & 0xffffffff);
     if (entries == 0 || nEntries == 0 || nEntries > MaxGhostRecords) return;
     for (uint i = 0; i < nEntries; i++) {
         uint64 e = entries + AddEntryStride * i;
@@ -127,6 +135,7 @@ void Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
             }
         }
         g_ghosts.InsertLast(pg);
+        Scrubber_AutoOpen(pg);
         trace("Ghosts2: adopted race ghost " + pg.nickname + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
     }
 }
@@ -166,6 +175,7 @@ PluginGhost@ Ghosts_Add(CGameGhostScript@ g, const string &in source, bool displ
     g_ghosts.InsertLast(pg);
     pg.inRace = true;
     g_trackedMapUid = CurrentMapUid();
+    Scrubber_AutoOpen(pg);
     return pg;
 }
 

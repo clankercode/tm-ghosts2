@@ -2,7 +2,8 @@
 // them in sync. The leader is the scrubber's ghost (else the first member); every frame the other members'
 // clocks mirror the leader's wanted time / pause / speed, so ghosts that start later join at the group time.
 
-bool Lock_Enabled() { return S_ScrubLockAll; }
+bool g_lockAll = true;  // runtime state, seeded from S_ScrubLockDefault in Main()
+bool Lock_Enabled() { return g_lockAll; }
 
 bool Lock_IsMember(PluginGhost@ pg) { return pg !is null && TimeCtl_GhostTime(pg) >= 0; }
 
@@ -21,7 +22,7 @@ PluginGhost@ Lock_Leader() {
 
 // Turn the lock on (snapping every member to the leader's time / state) or off (members keep their clocks).
 void Lock_Set(bool on) {
-    S_ScrubLockAll = on;
+    g_lockAll = on;
     if (!on) return;
     auto leader = Lock_Leader();
     if (leader is null) return;

@@ -108,14 +108,18 @@ uint ScriptGhostTime(CGameGhostScript@ g) {
 }
 
 // Script modes only: unspawn + respawn the local player (a RaceGhost_Add'ed ghost only starts on the next spawn).
-bool Race_RespawnLocal(uint delayMs = 1500) {
+bool Race_RespawnLocal(uint delayMs = 1500) { return Race_SpawnLocal(delayMs, true); }
+
+// (Re)spawn the local player. `unspawn` first = a clean restart (ghosts restart with the spawn); without it the
+// engine treats it as a respawn of the current vehicle, which is enough to end the spectator camera clip.
+bool Race_SpawnLocal(uint delayMs, bool unspawn) {
     auto rules = CurrentRules();
     if (rules is null) return false;
     string login = GetLocalLogin();
     for (uint i = 0; i < rules.Players.Length; i++) {
         auto p = rules.Players[i];
         if (p is null || p.User is null || string(p.User.Login) != login) continue;
-        rules.UnspawnPlayer(p);
+        if (unspawn) rules.UnspawnPlayer(p);
         rules.SpawnPlayer(p, 0, int(rules.Now) + int(delayMs));
         return true;
     }

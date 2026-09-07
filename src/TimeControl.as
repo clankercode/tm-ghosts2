@@ -15,8 +15,10 @@
 // exactly `wanted`, every tick, in both race types and whether or not the local player is racing.
 // Evidence: research/mp4/2026-09-07-RaceGhost-Runtime.md.
 
-const uint16 O_Race_AddEntries = 0xdd0;
+const uint16 O_Race_AddEntries = 0xdd0;        // live copy, rebuilt from the script list at every (re)spawn
 const uint16 O_Race_AddEntryCount = 0xdd8;
+const uint16 O_Race_ScriptAddEntries = 0x1d0;  // script-facing list: RaceGhost_Add/Remove act here, applied at the next spawn
+const uint16 O_Race_ScriptAddEntryCount = 0x1d8;
 const uint16 O_Race_ScriptRecords = 0xde0;
 const uint16 O_Race_ScriptRecordCount = 0xde8;
 const uint16 O_Race_EngineRecords = 0x1080;
