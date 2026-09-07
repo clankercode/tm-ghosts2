@@ -100,13 +100,13 @@ respawn delay, camera type, Follow camera, classic-race camera hook), leaderboar
 
 ## Exports and command pack
 
-Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`, `RemoveAll`,
+Ghosts2 exports `Ghosts2::ListGhosts`, `Browse`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`, `RemoveAll`,
 `Spectate`, `StopSpectating`, `StopSpectatingEx(respawn)`, `State`, `ShowWindow`, `SelectTab`,
 `MoveWindow`, `GetGhostTime`, `Seek`, `SetPaused`, `SetSpeed`, `Resync`, `ShowScrubber`, `SetLockAll`,
 `SetCameraType`, `SetFollowCam`, `ResetCamera` and the leaderboard calls for other Openplanet scripts
 (see `src/Exports.as`). The optional pack in `mp4pack/` (plugin id `tm-ghosts2-mp4pack`) exposes the same
 operations to the `tm-mp4-control` plugin as `ghosts2.*` commands
-(`list`, `state`, `load_replay`, `load_pb`, `load_medal`, `lb_fetch`, `lb_list`, `load_lb`, `remove`,
+(`list`, `state`, `browse [dir=]`, `load_replay`, `load_pb`, `load_medal`, `lb_fetch`, `lb_list`, `load_lb`, `remove`,
 `remove_all`, `spectate`, `stop_spectating [respawn=]`, `cam type=`, `follow_cam cam=`, `cam_reset`,
 `lock all=`, `ghost_time`, `seek`, `pause`, `speed`, `resync`, `scrubber`, `show_window`). The pack must
 not re-declare the imports: Openplanet compiles a dependency's `exports` files into the dependent module.
@@ -120,6 +120,12 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 ```
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
+`GAME=turbo ./build.sh dev` targets Trackmania Turbo instead (`--game-target TURBO`, staging into
+`~/OpenplanetTurbo/Plugins`, RemoteBuild on the Turbo port) - groundwork, the port itself is not done.
+`tools/tm2-smoke.sh` runs a live smoke test against the game through the command pack: adds actually
+starting, the replay browser, a leaderboard round trip, playback and the lock, spectate/stop and the
+camera reset, removal, and hook health. It adapts to the race type, so it is also useful in the legacy
+solo playground where ghosts cannot be added.
 `tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack.
 
 ## How it works (engine notes)
@@ -161,6 +167,16 @@ notes; engine build `2019-11-19_18_50`, Openplanet 1.29.14).
 - **Saving writes `.Replay.Gbx`** (MP4 has no `Ghost_Save`), under `Replays/Ghosts2/`.
 - Only ghosts loaded by Ghosts2 (or adopted from the race) can be removed individually, spectated or
   saved; the engine's own medal/PB ghosts have no instance id.
+- **The legacy solo playground (`CTrackManiaRace1P`) will not take new ghosts.** That is the race you get
+  from the classic Campaigns menu: its `CTrackManiaRaceRules` nod has an empty `Players` list, so
+  `RaceGhost_Add` returns `MwId(0)` and there is nobody for `SpawnPlayer` to restart. Everything else
+  works there - the opponents you picked in the game's own dialog are listed, scrubbed, locked together
+  and spectated as usual. A script-driven race (`CTrackManiaRaceNew`) takes ghosts normally.
+- **The game's own race ghosts cannot be taken out of the race**; Ghosts2 checks whether a removal landed
+  and tells you when it did not, rather than dropping the row and letting the ghost reappear.
+- **Your race HUD stays on screen while you spectate**, showing a frozen chrono. Setting the
+  `OverlayHide*` fields (even `OverlayHideAll`) on `rules.UIManager.UIAll` does not affect it - the
+  writes stick but the HUD does not change - so the solo HUD is driven from somewhere else. Still open.
 
 ## Notes for agents
 
