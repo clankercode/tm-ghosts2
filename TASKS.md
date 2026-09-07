@@ -21,7 +21,7 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 ## Tooling / infra
 - [x] tm-mp4-control: socket control plugin (menus, click, titles, play_map, campaigns, race, ghosts, mem, findu32(deep), race_ghost_add/remove/query, spectate)
 - [x] tools: mp4call.py, memdump.py, structdump.py, typedb.py, mp-restart/screenshot/log/set-devmode, mp-play-campaign-map.sh
-- [~] Ghidra headless analysis of ManiaPlanet.exe: local runs OOM-killed even at 24G (game holds the RAM) → x-alpha only (grok helper, 32G heap) → GhidraMCP :18743 via ssh tunnel → research/mp4/Ghidra.md
+- [~] Ghidra: analysis running on x-alpha with upstream 12.1.3 (~/re/mp4u, started 21:44); tunnel unit + `research/mp4/tools/ghidra-mp4.sh` + research/mp4/Ghidra.md done; next: start server, RE RaceGhost_GetStartTime
 - [ ] tm-mp4-control: pack registry (`Packs.as`) + shared funcdef (grok helper)
 - [ ] Log LSP gaps: void `UI::BeginTabBar` in `if` (logged 2026-09-07); typedb needs `OpenplanetNext.json` name for MP4
 
