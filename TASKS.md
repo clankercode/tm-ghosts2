@@ -4,8 +4,8 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 
 ## Plugin features
 - [x] List race ghosts (engine `RaceGhosts` for classic mode; plugin-tracked instances for script modes) (opus subagent, v0)
-- [x] Load ghosts from replay files (`Replay_Load` → `RaceGhost_Add`) — API verified in-game via tm-mp4-control (`race_ghost_add source=replay path=Ghosts2/test-silver.Replay.Gbx`, path relative to Replays/); Ghosts2 UI path still to test
-- [x] Load personal best (`ScoreMgr.Map_GetRecordGhost`) — needs in-game test (opus subagent)
+- [x] Load ghosts from replay files (`Replay_Load` → `RaceGhost_Add`) — API verified in-game via tm-mp4-control (`race_ghost_add source=replay path=Ghosts2/test-silver.Replay.Gbx`, path relative to Replays/); Ghosts2 path verified 2026-09-07 via `ghosts2.load_replay path=Ghosts2/test-silver.Replay.Gbx` (1/1 ghost, starts on respawn)
+- [x] Load personal best (`ScoreMgr.Map_GetRecordGhost`) — verified in-game 2026-09-07 via `ghosts2.load_pb` (PB 23.277 by xertrov; `LocalUserId()` via `rules.Users[i].Id` is correct)
 - [x] Load author/gold/silver/bronze medal ghost buttons (`Map_GetMultiAsyncLevelRecordGhost`, level 4..1) (grok helper) — user request 2026-09-07
 - [x] Spectate a ghost via `UIAll.SpectatorForcedTarget` (+ restore) — verified in-game via tm-mp4-control `spectate`
 - [x] Auto re-add after the mode's `RaceGhost_RemoveAll` — detection fixed: per-instance `RaceGhost_GetStartTime/IsVisible` queries; only "removed" after the instance previously reported startTime>0 (grok helper)

@@ -116,19 +116,16 @@ Verified against `~/Openplanet4/Openplanet.h` + `Openplanet4.json` (engine build
 - MLHook and any `SendCustomEvent` event bus — the solo mode chain has none; drive
   `CTrackManiaRaceRules` methods directly.
 
-**Needs in-game verification (marked UNVERIFIED in the source):**
+**Verified in-game (2026-09-07, TimeAttack on A01):**
 
-1. `LocalUserId()` picks `rules.Users[i].Id` by matching `GetLocalLogin()`. Nadeo's own script
-   reads `declare Ident MyUserID for Players[0].User`, a script-scoped variable with no
-   reflected equivalent, so it is not proof that `CMwNod.Id` is the id `Map_GetRecordGhost`
-   wants. If PB loading returns nothing, this is the first thing to check.
-2. Whether `SpectatorForcedTarget` written from Openplanet sticks, or is overwritten each
-   frame by the running mode script (which owns the `CGamePlaygroundUIConfig`).
-3. Whether ghosts added by `RaceGhost_Add` actually appear in `CTrackManiaRace.RaceGhosts`
-   with the same nickname/time we see on the `CGameGhostScript` — the whole tracking and
-   auto-re-add mechanism depends on that match.
-4. Whether `Replay_Save` accepts a bare filename from a plugin the way it does from the mode
-   script, and where the file lands.
-5. Whether releasing a task result (`TaskResult_Release`) while we still hold its
-   `CGameGhostScript@` keeps the ghost alive. Openplanet handles are refcounted, so it should,
-   but Nadeo also calls `ScoreMgr.ReleaseGhost` / `DataFileMgr.Ghost_Release` explicitly.
+1. `LocalUserId()` (`rules.Users[i].Id` matched by `GetLocalLogin()`) is the id
+   `Map_GetRecordGhost` wants: `Load my PB` returns the local record ghost.
+2. `SpectatorForcedTarget` written from Openplanet sticks; the camera follows the ghost until
+   `Stop spectating` restores the saved values.
+3. In script modes `RaceGhosts` stays empty, so plugin ghosts are tracked per instance with
+   `RaceGhost_GetStartTime` / `IsVisible`; the nickname+time match is only used for the
+   classic race list.
+4. `Replay_Save` accepts a bare filename and writes under the game's `Replays` folder
+   (`Replays/Ghosts2/<name>.Replay.Gbx`); `Replay_Load` reads it back.
+5. Releasing a task result while holding its `CGameGhostScript@` keeps the ghost usable
+   (medal/PB ghosts are added after `TaskResult_Release`).
