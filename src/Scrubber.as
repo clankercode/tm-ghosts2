@@ -166,7 +166,7 @@ void DrawScrubberWindow() {
     if (UI::IsItemHovered()) {
         string specName = "";
         if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.DisplayName() + ")"; }
-        UI::SetTooltip(isSpec ? "Stop spectating" + specName : "Spectate this ghost (right click: pick a ghost)");
+        UI::SetTooltip((isSpec ? "Stop spectating" + specName : "Spectate this ghost") + "\\nright click to change");
     }
     // right click on the eye: pick any ghost to spectate
     if (UI::BeginPopupContextItem("g2-spec-menu")) {
