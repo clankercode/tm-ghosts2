@@ -54,6 +54,17 @@ MwId LocalUserId() {
     return MwId();
 }
 
+// Raw address of a nod (temporarily stores the handle in a scratch nod's first slot and reads it back as u64).
+uint64 NodPointer(CMwNod@ nod) {
+    if (nod is null) return 0;
+    auto tmpNod = CMwNod();
+    uint64 saved = Dev::GetOffsetUint64(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, nod);
+    uint64 ptr = Dev::GetOffsetUint64(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, saved);
+    return ptr;
+}
+
 string TypeName(CMwNod@ nod) {
     if (nod is null) return "null";
     auto ty = Reflection::TypeOf(nod);

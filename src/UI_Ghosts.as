@@ -58,7 +58,9 @@ void DrawRaceGhostsTable(CTrackManiaRace@ race, CTrackManiaRaceRules@ rules) {
         UI::TableNextColumn(); UI::Text("\\$888" + g.GhostLogin);
         UI::TableNextColumn();
         if (pg is null) {
-            UI::TextDisabled("engine");
+            auto eg = Ghosts_FindEngineByCtn(g);
+            if (eg is null || eg.instId == 0) UI::TextDisabled("engine");
+            else UI::Text("\\$888engine " + Text::Format("0x%08x", eg.instId));
         } else {
             UI::Text("\\$8f8" + pg.instId);
             UI::SameLine();
@@ -132,14 +134,19 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
 
 void DrawPlaybackControls() {
     if (!TimeCtl_Available()) {
-        if (g_ghosts.Length > 0) UI::TextDisabled("Playback control needs a script-mode race (CTrackManiaRaceNew)" + (S_TimeControl ? "" : " and the Time control setting"));
+        if (g_ghosts.Length > 0 || g_engineGhosts.Length > 0) UI::TextDisabled("Playback control needs a TrackMania race" + (S_TimeControl ? "" : " and the Time control setting"));
         return;
     }
     UI::SeparatorText("Playback");
-    for (uint i = 0; i < g_ghosts.Length; i++) {
-        auto pg = g_ghosts[i];
-        if (pg.instId == 0) continue;
-        UI::PushID("pb" + i);
+    DrawPlaybackRows(g_ghosts, "pb");
+    DrawPlaybackRows(g_engineGhosts, "pe");
+}
+
+void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
+    for (uint i = 0; i < list.Length; i++) {
+        auto pg = list[i];
+        if (!pg.engine && pg.instId == 0) continue;
+        UI::PushID(idPrefix + i);
         int t = TimeCtl_GhostTime(pg);
         UI::Text(pg.nickname + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))));
         UI::SameLine();

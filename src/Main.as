@@ -19,6 +19,8 @@ void OnDestroyed() { Cleanup(); }
 void OnDisabled() { Cleanup(); }
 
 void Cleanup() {
+    // give engine ghosts their default start offset back before we forget them
+    for (uint i = 0; i < g_engineGhosts.Length; i++) TimeCtl_Release(g_engineGhosts[i]);
     // Leave the race as we found it: restore the UI config, drop our bookkeeping.
     Spectate_Stop();
     Ghosts_ForgetAll();

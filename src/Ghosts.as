@@ -21,6 +21,13 @@ class PluginGhost {
     float speed = 1.0;
     float heldTime = 0.0;   // ms into the replay while paused / at non-1x speed
 
+    bool wasControlled = false;
+
+    // engine ghosts (CTrackManiaRace.RaceGhosts, classic race): no CGameGhostScript, identified by nod address
+    bool engine = false;
+    CGameCtnGhost@ ctn;
+    uint64 ctnPtr = 0;
+
     bool Controlled() { return paused || speed != 1.0; }
 
     PluginGhost(CGameGhostScript@ g, const string &in src) {
@@ -31,7 +38,55 @@ class PluginGhost {
         key = GhostKey(nickname, raceTime);
     }
 
+    PluginGhost(CGameCtnGhost@ g) {
+        engine = true;
+        @ctn = g;
+        ctnPtr = NodPointer(g);
+        source = "engine";
+        nickname = g is null ? "?" : string(g.GhostNickname);
+        raceTime = g is null ? 0 : g.RaceTime;
+        key = GhostKey(nickname, raceTime);
+        inRace = true;
+    }
+
     MwId InstMwId() { return MwId(instId); }
+}
+
+// Engine ghosts currently in CTrackManiaRace.RaceGhosts, one PluginGhost per nod (state survives rescans).
+array<PluginGhost@> g_engineGhosts;
+
+void Ghosts_SyncEngine() {
+    auto race = CurrentRace();
+    if (race is null) {
+        g_engineGhosts.RemoveRange(0, g_engineGhosts.Length);
+        return;
+    }
+    array<PluginGhost@> next;
+    for (uint i = 0; i < race.RaceGhosts.Length; i++) {
+        auto g = race.RaceGhosts[i];
+        if (g is null) continue;
+        uint64 ptr = NodPointer(g);
+        PluginGhost@ found = null;
+        for (uint j = 0; j < g_engineGhosts.Length; j++) {
+            if (g_engineGhosts[j].ctnPtr == ptr) { @found = g_engineGhosts[j]; break; }
+        }
+        if (found is null) @found = PluginGhost(g);
+        next.InsertLast(found);
+    }
+    g_engineGhosts = next;
+    // learn each engine ghost's GhostInstId from its playback record (needed for the exports / pack)
+    for (uint i = 0; i < g_engineGhosts.Length; i++) {
+        if (g_engineGhosts[i].instId == 0) { GhostSlot slot; TimeCtl_Resolve(g_engineGhosts[i], slot); }
+    }
+}
+
+PluginGhost@ Ghosts_FindEngineByCtn(CGameCtnGhost@ g) {
+    if (g is null) return null;
+    uint64 ptr = NodPointer(g);
+    for (uint i = 0; i < g_engineGhosts.Length; i++) {
+        if (g_engineGhosts[i].ctnPtr == ptr) return g_engineGhosts[i];
+    }
+    return null;
 }
 
 array<PluginGhost@> g_ghosts;
@@ -92,6 +147,7 @@ void Ghosts_RemoveAll() {
 void Ghosts_ForgetAll() {
     Spectate_Reset();
     g_ghosts.RemoveRange(0, g_ghosts.Length);
+    g_engineGhosts.RemoveRange(0, g_engineGhosts.Length);
 }
 
 // --- tracking --------------------------------------------------------------
@@ -104,11 +160,12 @@ void Ghosts_Update() {
         Ghosts_ForgetAll();
         return;
     }
-    if (g_ghosts.Length == 0) return;
 
     uint now = Time::Now;
     if (now - g_lastScan < S_ScanIntervalMs) return;
     g_lastScan = now;
+    Ghosts_SyncEngine();
+    if (g_ghosts.Length == 0) return;
 
     auto rules = CurrentRules();
     if (rules is null) return;

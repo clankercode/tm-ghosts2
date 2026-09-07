@@ -26,8 +26,10 @@ namespace Ghosts2 {
             for (uint i = 0; i < race.RaceGhosts.Length; i++) {
                 auto g = race.RaceGhosts[i];
                 if (g is null) continue;
+                auto eg = Ghosts_FindEngineByCtn(g);
+                int egTime = eg is null ? -1 : TimeCtl_GhostTime(eg);   // also refreshes eg.instId
                 auto row = Json::Object();
-                row["instId"] = 0;
+                row["instId"] = eg is null ? 0 : eg.instId;
                 row["nickname"] = string(g.GhostNickname);
                 row["time"] = g.RaceTime;
                 row["source"] = "engine";
@@ -35,6 +37,9 @@ namespace Ghosts2 {
                 row["startTime"] = 0;
                 row["visible"] = true;
                 row["replayOver"] = false;
+                row["ghostTime"] = egTime;
+                row["paused"] = eg !is null && eg.paused;
+                row["speed"] = eg is null ? 1.0 : eg.speed;
                 arr.Add(row);
             }
         }
@@ -91,8 +96,12 @@ namespace Ghosts2 {
     void ShowWindow(bool visible) { S_ShowWindow = visible; }
 
     PluginGhost@ FindTracked(uint instId) {
+        if (instId == 0) return null;
         for (uint i = 0; i < g_ghosts.Length; i++) {
-            if (g_ghosts[i].instId == instId && instId != 0) return g_ghosts[i];
+            if (g_ghosts[i].instId == instId) return g_ghosts[i];
+        }
+        for (uint i = 0; i < g_engineGhosts.Length; i++) {
+            if (g_engineGhosts[i].instId == instId) return g_engineGhosts[i];
         }
         return null;
     }
