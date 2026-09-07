@@ -31,7 +31,9 @@ rather than the TM2020 ghost-clip manager.
   frame; Ghosts2 writes that field (`CTrackManiaRaceNew+0xdd0[i]+0x10`, matched by GhostInstId) once
   per frame while a ghost is paused or off 1x, and once for a seek. Works while driving and while
   spectating; a respawn rebuilds the engine's records and drops the offset (the ghost restarts with
-  the player, as race ghosts do). Setting `Time control` turns it off.
+  the player, as race ghosts do). In the classic campaign race the engine's own medal/PB ghosts get
+  the same controls and can be spectated (their records sit at `CTrackManiaRace+0x1080`; the clock
+  is shifted through `CGameCtnGhost+0x40`, restored on release). Setting `Time control` turns it off.
 - **Auto re-add** (on by default) — the stock solo mode calls `RaceGhost_RemoveAll()` on every
   phase transition, silently wiping plugin ghosts. Ghosts2 keeps the `CGameGhostScript@`
   handles and puts them back, rate limited, giving up after a few failed attempts so it can
@@ -65,8 +67,9 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 ## Known limitations
 
-- **Playback control is a memory write against engine build 2019-11-19_18_50** (script modes
-  only; the classic campaign race keeps its ghosts elsewhere and is not supported yet). The
+- **Playback control is a memory write against engine build 2019-11-19_18_50.** Script-mode
+  instances are driven through their add entry's `OffsetMs`; the classic campaign race's engine
+  ghosts (`RaceGhosts`, records at `CTrackManiaRace+0x1080`) through `CGameCtnGhost+0x40`. The
   script API itself only offers the forward-only `uint OffsetMs` of `RaceGhost_AddWithOffset`.
 - **Ghost identity is a heuristic.** `CGameCtnGhost.Id` is `0xffffffff` for engine-loaded
   ghosts, so plugin ghosts are matched to `RaceGhosts` rows by stripped nickname + race time.
