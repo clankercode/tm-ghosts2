@@ -163,7 +163,7 @@ void LoadMedalInner(uint level) {
     while (task.IsProcessing) yield();
     if (task.HasSucceeded && task.Ghost !is null) {
         if (Ghosts_Add(task.Ghost, "Medal " + level) !is null) SetStatus("Added medal ghost (level " + level + ").", true);
-        else SetStatus("RaceGhost_Add rejected the medal ghost.", true, true);
+        else SetStatus("RaceGhost_Add rejected the medal ghost" + AddRejectedWhy(), true, true);
     } else if (task.HasSucceeded) {
         SetStatus("No medal ghost for level " + level + ".", true);
     } else {
@@ -202,7 +202,7 @@ void LoadPbInner() {
         } else if (Ghosts_Add(task.Ghost, "PB") !is null) {
             SetStatus("Added personal best ghost.", true);
         } else {
-            SetStatus("RaceGhost_Add rejected the personal best ghost.", true, true);
+            SetStatus("RaceGhost_Add rejected the personal best ghost" + AddRejectedWhy(), true, true);
         }
     } else {
         SetStatus("Map_GetRecordGhost failed: " + string(task.ErrorDescription), true, true);

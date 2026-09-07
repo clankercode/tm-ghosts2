@@ -107,6 +107,19 @@ uint ScriptGhostTime(CGameGhostScript@ g) {
     return t < 0 ? 0 : uint(t);
 }
 
+// The classic campaign race (CTrackManiaRace1P) does expose a CTrackManiaRaceRules nod, but it is not the one
+// driving the race: its Players list is empty (the playground has the player), so RaceGhost_Add returns MwId 0
+// and SpawnPlayer has nobody to spawn. Loading ghosts needs a script-driven race (CTrackManiaRaceNew).
+bool Race_CanAddGhosts() {
+    auto rules = CurrentRules();
+    return rules !is null && rules.Players.Length > 0;
+}
+
+// Suffix for a rejected add: name the usual cause instead of leaving the user with a bare rejection.
+string AddRejectedWhy() { return Race_CanAddGhosts() ? "." : " - " + ClassicRaceHint + "."; }
+
+const string ClassicRaceHint = "the classic campaign race only plays the ghosts picked in the game's own opponent dialog; start the map from the map menu for a script race to load ghosts into";
+
 // Script modes only: unspawn + respawn the local player (a RaceGhost_Add'ed ghost only starts on the next spawn).
 bool Race_RespawnLocal(uint delayMs = 1500) { return Race_SpawnLocal(delayMs, true); }
 

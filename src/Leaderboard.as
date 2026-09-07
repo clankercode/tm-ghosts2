@@ -22,6 +22,35 @@ string g_lbZone = "";
 uint g_lbOffset = 0;
 bool g_lbBusy = false;
 string g_lbStatus = "";
+// Automatic fetch for a new map, from the Load tab. Right after a map load the game answers
+// "Unable to update leaderboard" for a good ten seconds (measured on A03: fetches at +0 / +4 / +8 s all
+// failed, one at ~+16 s succeeded), so this retries over about half a minute before giving up; the Fetch
+// button is always there, and it never runs more than LbAutoMaxTries times per map.
+uint g_lbAutoTries = 0;
+uint g_lbAutoNextAt = 0;
+const uint LbAutoMaxTries = 6;
+const uint LbAutoRetryMs = 6000;
+
+bool Lb_WantAutoFetch() {
+    return !g_lbBusy && g_lbEntries.Length == 0 && g_lbAutoTries < LbAutoMaxTries && Time::Now >= g_lbAutoNextAt;
+}
+
+void Lb_AutoFetch() {
+    g_lbAutoTries++;
+    g_lbAutoNextAt = Time::Now + LbAutoRetryMs;
+    Lb_Fetch(0);
+}
+
+// The cached list belongs to one map. Dropped as soon as the map changes so a stale board is never shown
+// (and never loadable); the Load tab fetches the new map's board by itself the next time it is drawn.
+void Lb_OnMapChanged() {
+    g_lbEntries.RemoveRange(0, g_lbEntries.Length);
+    g_lbMapUid = "";
+    g_lbOffset = 0;
+    g_lbStatus = "";
+    g_lbAutoTries = 0;
+    g_lbAutoNextAt = 0;
+}
 
 string Lb_Zone() { return S_LeaderboardZone.Length == 0 ? "World" : S_LeaderboardZone; }
 
@@ -105,7 +134,7 @@ void LbLoadInner(uint rank) {
     while (task.IsProcessing) yield();
     if (task.HasSucceeded && task.Ghost !is null) {
         if (Ghosts_Add(task.Ghost, "LB " + label) !is null) SetStatus("Added leaderboard ghost " + label + " (" + FormatTime(e.score) + ").", true);
-        else SetStatus("RaceGhost_Add rejected the ghost " + label, true, true);
+        else SetStatus("RaceGhost_Add rejected the ghost " + label + AddRejectedWhy(), true, true);
     } else if (task.HasSucceeded) {
         SetStatus("Ghost_Download returned no ghost for " + label, true, true);
     } else {

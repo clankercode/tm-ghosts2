@@ -113,6 +113,9 @@ array<uint>@ Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
     array<uint> ids;
     if (!Ghosts_AdoptList(rules, race, O_Race_ScriptAddEntries, O_Race_ScriptAddEntryCount, ids)) return null;
     if (!Ghosts_AdoptList(rules, race, O_Race_AddEntries, O_Race_AddEntryCount, ids)) return null;
+    for (int i = int(g_removedInstIds.Length) - 1; i >= 0; i--) {
+        if (ids.Find(g_removedInstIds[i]) < 0) g_removedInstIds.RemoveAt(uint(i));
+    }
     return ids;
 }
 
@@ -128,6 +131,7 @@ bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
         uint instId = uint(v >> 32);
         if (instId == 0) continue;
         if (ids.Find(instId) < 0) ids.InsertLast(instId);
+        if (Ghosts_WasRemoved(instId)) continue;
         if (Ghosts_FindByInstId(instId) !is null) continue;
         auto ctn = cast<CGameCtnGhost>(NodFromPointer(ghostPtr));
         auto pg = PluginGhost(ctn, instId, "race");
@@ -226,24 +230,39 @@ bool Ghosts_PushToRace(PluginGhost@ pg) {
     return false;
 }
 
+// RaceGhost_Remove only takes the instance out of the script-facing list; the live copy (race+0xdd0) keeps
+// it, and keeps playing it, until the engine rebuilds at the next spawn. Adoption reads that live copy, so
+// without this set a removed ghost was re-adopted on the very next scan. Ids are dropped again once the
+// engine has actually forgotten them.
+array<uint> g_removedInstIds;
+
+bool Ghosts_WasRemoved(uint instId) { return g_removedInstIds.Find(instId) >= 0; }
+
 void Ghosts_Remove(PluginGhost@ pg) {
     if (pg is null) return;
     auto rules = CurrentRules();
     if (rules !is null && pg.instId != 0) rules.RaceGhost_Remove(pg.InstMwId());
+    if (pg.instId != 0 && !Ghosts_WasRemoved(pg.instId)) g_removedInstIds.InsertLast(pg.instId);
     Spectate_ForgetGhost(pg.instId);
     int idx = g_ghosts.FindByRef(pg);
     if (idx >= 0) g_ghosts.RemoveAt(idx);
+    SetStatus("Removed " + pg.DisplayName() + " - it stops driving at your next restart.");
 }
 
 void Ghosts_RemoveAll() {
     auto rules = CurrentRules();
     if (rules !is null) rules.RaceGhost_RemoveAll();
     Spectate_Stop();
+    for (uint i = 0; i < g_ghosts.Length; i++) {
+        uint id = g_ghosts[i].instId;
+        if (id != 0 && !Ghosts_WasRemoved(id)) g_removedInstIds.InsertLast(id);
+    }
     g_ghosts.RemoveRange(0, g_ghosts.Length);
 }
 
 // Drop our bookkeeping without touching the race (used on map change).
 void Ghosts_ForgetAll() {
+    g_removedInstIds.RemoveRange(0, g_removedInstIds.Length);
     Spectate_Reset();
     TimeCtl_ReleaseAll();
     g_ghosts.RemoveRange(0, g_ghosts.Length);
@@ -260,6 +279,8 @@ void Ghosts_Update() {
         Spectate_Reset();
         Ghosts_ForgetAll();
         Ghosts_CancelSpawnForAdd();
+        Lb_OnMapChanged();
+        SetStatus("");
         return;
     }
 
