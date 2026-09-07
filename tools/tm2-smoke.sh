@@ -96,12 +96,15 @@ for g in json.load(sys.stdin)['data']: print('        ', g['instId'], g['nicknam
 
   head_ "playback control (pause / seek / speed, through the lock)"
   id="$(ghosts | jq_ "d[0]['instId']")"
-  call ghosts2.pause instId="$id" paused=true >/dev/null; sleep 2
-  a="$(ghosts | jq_ "d[0]['ghostTime']")"; sleep 2; b="$(ghosts | jq_ "d[0]['ghostTime']")"
-  if [[ "$a" == "$b" ]]; then ok "paused ghost does not advance ($a ms held for 2 s)"; else bad "paused ghost advanced $a -> $b"; fi
+  # seek first so the pause check holds a non-zero time (a ghost paused at its start would pass trivially)
+  call ghosts2.pause instId="$id" paused=true >/dev/null; sleep 1
   call ghosts2.seek instId="$id" ms=5000 >/dev/null; sleep 2
   s="$(ghosts | jq_ "d[0]['ghostTime']")"
   if [[ "$s" == "5000" ]]; then ok "seek lands exactly (5000 ms)"; else bad "seek landed at $s, expected 5000"; fi
+  a="$(ghosts | jq_ "d[0]['ghostTime']")"; sleep 3; b="$(ghosts | jq_ "d[0]['ghostTime']")"
+  if [[ "$a" == "$b" && "${a:-0}" -gt 0 ]]; then ok "paused ghost does not advance ($a ms held for 3 s)"
+  elif [[ "$a" == "$b" ]]; then bad "pause check was trivial: ghost sat at ${a} ms"
+  else bad "paused ghost advanced $a -> $b"; fi
   # every locked member must sit at the same time
   spread="$(ghosts | jq_ "max(g['ghostTime'] for g in d) - min(g['ghostTime'] for g in d)")"
   if [[ "${spread:-99}" -le 2 ]]; then ok "locked ghosts are in sync (spread ${spread} ms)"; else bad "locked ghosts drifted ${spread} ms apart"; fi
