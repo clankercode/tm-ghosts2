@@ -1,13 +1,24 @@
 // Ghosts++-style scrubber: a small always-on-top strip at the bottom of the screen for one ghost.
 
 PluginGhost@ g_scrubGhost;
+bool g_scrubDragging = false;     // slider held: the clock is frozen at the slider value until release
+bool g_scrubWasPaused = false;
+int g_scrubDragValue = -1;
 
 void Scrubber_Open(PluginGhost@ pg) {
     @g_scrubGhost = pg;
 }
 
 void Scrubber_Close() {
+    Scrubber_EndDrag();
     @g_scrubGhost = null;
+}
+
+void Scrubber_EndDrag() {
+    if (!g_scrubDragging) return;
+    g_scrubDragging = false;
+    g_scrubDragValue = -1;
+    if (g_scrubGhost !is null && !g_scrubWasPaused) TimeCtl_SetPaused(g_scrubGhost, false);
 }
 
 // Drop the scrubber if its ghost disappeared from our lists.
@@ -83,8 +94,31 @@ void DrawScrubberWindow() {
     UI::BeginDisabled(!avail || t < 0);
     UI::SetNextItemWidth(-1);
     string fmt = t < 0 ? "-" : FormatTime(uint(t));
-    float v = UI::SliderFloat("##g2-scrub-slider", float(t < 0 ? 0 : t), 0.0f, float(maxT), fmt, UI::SliderFlags::NoInput);
-    if (UI::IsItemActive() && int(v) != t) TimeCtl_Seek(pg, uint(Math::Max(0.0f, v)));
+    float shown = g_scrubDragging && g_scrubDragValue >= 0 ? float(g_scrubDragValue) : float(t < 0 ? 0 : t);
+    float v = UI::SliderFloat("##g2-scrub-slider", shown, 0.0f, float(maxT), fmt, UI::SliderFlags::NoInput);
+    if (UI::IsItemActive()) {
+        // Hold the clock while the slider is held, otherwise the engine advances it between our seeks and the
+        // ghost flips between the slider value and one tick ahead.
+        if (!g_scrubDragging) {
+            g_scrubDragging = true;
+            g_scrubWasPaused = pg.paused;
+            TimeCtl_SetPaused(pg, true);
+        }
+        int target = int(Math::Max(0.0f, v));
+        if (target != g_scrubDragValue) {
+            g_scrubDragValue = target;
+            TimeCtl_Seek(pg, uint(target));
+        }
+    } else if (g_scrubDragging) {
+        Scrubber_EndDrag();
+    }
     UI::EndDisabled();
+    // right click anywhere on the strip toggles pause (MP4 Openplanet has no IsWindowHovered; test the rect)
+    if (avail && t >= 0 && UI::IsMouseClicked(UI::MouseButton::Right)) {
+        vec2 m = UI::GetMousePos();
+        vec2 p0 = UI::GetWindowPos();
+        vec2 sz = UI::GetWindowSize();
+        if (m.x >= p0.x && m.y >= p0.y && m.x <= p0.x + sz.x && m.y <= p0.y + sz.y) TimeCtl_SetPaused(pg, !pg.paused);
+    }
     UI::End();
 }
