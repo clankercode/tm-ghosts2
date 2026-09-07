@@ -28,9 +28,11 @@ case "$mode" in
     sed -i 's/^#__DEFINES__/defines = ["DEV"]/' "$dest/info.toml"
     echo "== staged $name $version -> $dest"
     if [[ "${SKIP_RELOAD:-0}" != "1" ]] && command -v tm-remote-build >/dev/null; then
-      if ss -ltnH 2>/dev/null | grep -q ':30001 '; then
-        echo "== tm-remote-build load folder $slug (Openplanet4)"
-        tm-remote-build load folder "$slug" -op Openplanet4 -d "$op_dir" -l 3 -i 0.5 || echo "!! remote load failed (see ~/Openplanet4/Openplanet.log)"
+      rb_host="$(ss -ltnH 2>/dev/null | awk '$4 ~ /:30001$/ { sub(/:[0-9]+$/, "", $4); print $4; exit }')"
+      if [[ -n "$rb_host" ]]; then
+        [[ "$rb_host" == "0.0.0.0" || "$rb_host" == "*" ]] && rb_host="127.0.0.1"
+        echo "== tm-remote-build load folder $slug (Openplanet4 @ $rb_host)"
+        tm-remote-build load folder "$slug" -op Openplanet4 --host "$rb_host" -d "$op_dir" -l 3 -i 0.5 || echo "!! remote load failed (see ~/Openplanet4/Openplanet.log)"
       else
         echo "!! RemoteBuild (:30001) not listening; restart the game or load the plugin manually"
       fi
