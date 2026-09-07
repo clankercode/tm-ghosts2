@@ -52,7 +52,7 @@ uint S_SpectateRespawnDelayMs = 1500;
 [Setting category="Spectate" name="Camera hook (classic race)" description="Hook the camera target resolver so the chase cam follows the spectated ghost in the classic campaign race too (the engine ignores SpectatorForcedTarget there)."]
 bool S_CameraHook = true;
 
-[Setting category="Spectate" name="Camera type" min=0 max=15 description="SpectatorForceCameraType: 0 replay (engine camera clip), 1 follow (chase cam), 2 track cameras, 15 none (the game's own spectator camera controls apply). The scrubber's camera button cycles these."]
+[Setting category="Spectate" name="Camera type" min=0 max=15 description="SpectatorForceCameraType: 0 replay (engine camera clip), 1 follow (chase cam), 2 free cam, 15 none (the game's own spectator camera controls apply). The scrubber's camera button cycles these."]
 uint S_SpectateCameraType = 0;
 
 [Setting category="Spectate" name="Also set UISequence = EndRound" description="Mirrors Nadeo's StartReplaySequence(). May fight the running mode script; off by default."]

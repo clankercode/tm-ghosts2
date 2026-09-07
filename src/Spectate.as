@@ -46,14 +46,14 @@ bool Spectate_Start(uint instId) {
 }
 
 // Camera while spectating (SpectatorForceCameraType): 0 replay = the engine's camera clip, 1 follow = chase cam
-// (camsys cam 0x12), 2 = track cameras (cam 2), 15 = none: the terminal's own SpectatorCameraType and the game's
+// (camsys cam 0x12), 2 = free cam (cam 2; the terminal enum calls it Free), 15 = none: the terminal's own SpectatorCameraType and the game's
 // spectator camera controls apply. Verified 2026-09-08 by reading camsys+0x180 for each value.
 const array<uint> SpecCamTypes = {0, 1, 2, 15};
 
 string Spectate_CameraLabel(uint t) {
     if (t == 0) return "Replay";
     if (t == 1) return "Follow";
-    if (t == 2) return "Track";
+    if (t == 2) return "FreeCam";
     if (t == 15) return "Game";
     return "Cam " + t;
 }

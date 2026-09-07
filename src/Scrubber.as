@@ -176,7 +176,7 @@ void DrawScrubberWindow() {
     UI::SameLine();
     if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(78, 0))) Spectate_CycleCameraType(false);
     if (UI::IsItemHovered()) {
-        UI::SetTooltip("Spectator camera (click = next, right click = previous): Replay = engine camera clip, Follow = chase cam, Track = track cameras, Game = the game's own spectator camera controls");
+        UI::SetTooltip("Spectator camera (click = next, right click = previous): Replay = engine camera clip, Follow = chase cam, FreeCam = free camera (cam 7 in TM2020 terms), Game = the game's own spectator camera controls");
         if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
     }
     UI::SameLine();

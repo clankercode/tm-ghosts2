@@ -80,7 +80,7 @@ rules: it is visible during the race countdown, while you spectate and while you
 Show during the race countdown / Auto-hide / Hide delay*. Right-click on the time bar toggles pause; the speed
 button's right-click cycles speeds backwards. With the lock on, the eye shows whichever ghost is being spectated
 and stops it; right-click the eye for a picker listing every loaded ghost. The camera button next to it cycles the
-spectator camera: **Replay** (the engine's camera clip), **Follow** (chase cam), **Track** (track cameras) and
+spectator camera: **Replay** (the engine's camera clip), **Follow** (chase cam), **FreeCam** (the free camera, cam 7 in TM2020 terms) and
 **Game** (`SpectatorForceCameraType = 15`: the game's own spectator camera controls apply). Pack:
 `ghosts2.cam type=0|1|2|15`. Names are rendered through `Text::OpenplanetFormatCodes`.
 
