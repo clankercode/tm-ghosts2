@@ -67,7 +67,7 @@ uint64 NodPointer(CMwNod@ nod) {
 
 // Reverse of NodPointer: a nod handle for a raw address (only for real CMwNod-derived objects).
 CMwNod@ NodFromPointer(uint64 ptr) {
-    if (ptr == 0) return null;
+    if (!LooksLikeNod(ptr)) return null;
     auto tmpNod = CMwNod();
     uint64 saved = Dev::GetOffsetUint64(tmpNod, 0);
     Dev::SetOffset(tmpNod, 0, ptr);
@@ -120,5 +120,17 @@ bool Race_RespawnLocal(uint delayMs = 1500) {
         return true;
     }
     return false;
+}
+
+// Vtable sanity check before treating an address as a nod (Reflection on a non-nod crashes the game):
+// the vtable must be in the exe image and its first entry the shared CMwNod base slot (image offset 0x141dc0).
+bool LooksLikeNod(uint64 ptr) {
+    if (ptr == 0 || (ptr & 7) != 0) return false;
+    uint64 base = Dev::BaseAddress();
+    try {
+        uint64 vt = Dev::SafeReadUInt64(ptr);
+        if (vt < base || vt >= base + 0x2000000 || (vt & 7) != 0) return false;
+        return Dev::SafeReadUInt64(vt) == base + 0x141dc0;
+    } catch { return false; }
 }
 
