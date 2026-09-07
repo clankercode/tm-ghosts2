@@ -73,7 +73,12 @@ void Spectate_CycleCameraType(bool backwards) {
     Spectate_SetCameraType(SpecCamTypes[idx]);
 }
 
-void Spectate_Stop() { Spectate_StopEx(S_SpectateRespawnOnStop); }
+// A restart is the sure way to end the spectator clip, but it also throws away a lap. Mid-lap, take the
+// clip-release path instead - same setting shape as the restart-on-add one, and the same reasoning.
+void Spectate_Stop() {
+    Spectate_StopEx(S_SpectateRespawnOnStop == RespawnOnAdd::Always
+                    || (S_SpectateRespawnOnStop == RespawnOnAdd::UnlessMidLap && !Race_MidLap()));
+}
 
 void Spectate_StopEx(bool respawn) {
     auto ui = UiAll();

@@ -25,12 +25,23 @@ void DrawGhostsTab() {
     UI::SameLine();
     UI::Text("\\$888" + race.RaceGhosts.Length + " in race, " + g_ghosts.Length + " ours");
 
+    DrawRestartOffer();
     UI::Separator();
     DrawRaceGhostsTable(race, rules);
     UI::Separator();
     DrawPluginGhostsTable(rules);
     UI::Separator();
     DrawEngineGhosts();
+}
+
+// A ghost added mid-lap is queued until the next spawn. Rather than take the lap away, offer the restart.
+void DrawRestartOffer() {
+    if (!g_restartOffered) return;
+    UI::TextWrapped("\\$fc4A newly added ghost is waiting for a restart. Your current lap was left alone.");
+    if (UI::Button(Icons::Refresh + " Restart now")) Ghosts_RestartForAdds();
+    AddSimpleTooltip("Restart your run so the queued ghost(s) start with you");
+    UI::SameLine();
+    if (UI::Button(Icons::Times + " Dismiss")) g_restartOffered = false;
 }
 
 void DrawRaceGhostsTable(CTrackManiaRace@ race, CTrackManiaRaceRules@ rules) {

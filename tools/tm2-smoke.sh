@@ -103,7 +103,15 @@ if [[ "${n_ghosts:-0}" -lt 1 ]]; then
   note "no ghost with a playback record: playback / spectate / remove checks skipped"
 else
   head_ "the replay browser lists files as files"
+  # The browser remembers where it was left, including by a previous run of this script, so walk up to a
+  # folder that actually has subfolders before judging it.
   b="$(call ghosts2.browse)"
+  for _ in 1 2 3; do
+    [[ "$(printf '%s' "$b" | jq_ "len(d['dirs'])")" != "0" ]] && break
+    parent="$(printf '%s' "$b" | jq_ "d['dir'].rstrip('/').rsplit('/',1)[0] + '/'")"
+    [[ -z "$parent" || "$parent" == "/" ]] && break
+    b="$(call ghosts2.browse dir="$parent")"
+  done
   root_dirs="$(printf '%s' "$b" | jq_ "len(d['dirs'])")"
   if [[ "${root_dirs:-0}" -gt 0 ]]; then ok "replay folder lists $root_dirs subfolder(s)"; else bad "replay folder listed no subfolders"; fi
   sub="$(printf '%s' "$b" | jq_ "next((x for x in d['dirs'] if x.rstrip('/').endswith('Ghosts2')), d['dirs'][0] if d['dirs'] else '')")"

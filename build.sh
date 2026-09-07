@@ -46,6 +46,12 @@ case "$mode" in
         echo "== tm-remote-build load folder $slug ($op_name @ $rb_host:$rb_port)"
         # -op and --port are mutually exclusive in tm-remote-build; -op already implies the game's port.
         tm-remote-build load folder "$slug" -op "$op_name" --host "$rb_host" -d "$op_dir" -l 3 -i 0.5 || echo "!! remote load failed (see $op_dir/Openplanet.log)"
+        # Reloading this plugin unloads anything that depends on it, so bring the command pack back up too -
+        # otherwise every dev reload silently breaks tools/tm2-smoke.sh.
+        if [[ -d "$plugins_dir/$slug-mp4pack" ]]; then
+          echo "== tm-remote-build load folder $slug-mp4pack"
+          tm-remote-build load folder "$slug-mp4pack" -op "$op_name" --host "$rb_host" -d "$op_dir" -l 3 -i 0.5 >/dev/null 2>&1 || echo "!! pack reload failed"
+        fi
       else
         echo "!! RemoteBuild (:$rb_port) not listening; restart the game or load the plugin manually"
       fi

@@ -98,6 +98,13 @@ All under **Openplanet › Settings › Ghosts2**: replay folder, auto re-add, t
 scrubber visibility and step size, lock default, spectate options (force spectator, restart on stop,
 respawn delay, camera type, Follow camera, classic-race camera hook), leaderboard zone.
 
+Two of them share a shape worth knowing: **Restart the run when a ghost is added** (Loading) and
+**Restart when you stop spectating** (Spectate) are both *Never / Unless mid-lap / Always*, defaulting to
+*Unless mid-lap*. A restart is how a queued ghost starts playing and how the engine's spectator camera
+clip ends, but it also throws away the lap you are driving - so Ghosts2 does it freely while you are on
+the start line and holds off once you are past a checkpoint and still moving. When it holds off, the
+Ghosts tab shows a **Restart now** button.
+
 ## Exports and command pack
 
 Ghosts2 exports `Ghosts2::ListGhosts`, `Browse`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`, `RemoveAll`,
@@ -121,7 +128,9 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
 `GAME=turbo ./build.sh dev` targets Trackmania Turbo instead (`--game-target TURBO`, staging into
-`~/OpenplanetTurbo/Plugins`, RemoteBuild on the Turbo port) - groundwork, the port itself is not done.
+`~/OpenplanetTurbo/Plugins`, RemoteBuild on the Turbo port). See **Trackmania Turbo** below for what
+works there. `./build.sh dev` also reloads the `tm-ghosts2-mp4pack` command pack, because reloading this
+plugin unloads anything that depends on it.
 `tools/tm2-smoke.sh` runs a live smoke test against the game through the command pack: adds actually
 starting, the replay browser, a leaderboard round trip, playback and the lock, spectate/stop and the
 camera reset, removal, and hook health. It adapts to the race type, so it is also useful in the legacy
@@ -154,6 +163,36 @@ solo playground where ghosts cannot be added.
 
 The research behind these lives in the `openplanet/research/mp4/` notes (Ghidra decompiles and runtime
 notes; engine build `2019-11-19_18_50`, Openplanet 1.29.14).
+
+## Trackmania Turbo
+
+Ghosts2 compiles, loads and runs on Turbo, but the port is **not finished**, and the reason is worth
+stating plainly: **Turbo has no mode script.** `GetApp().PlaygroundScript` is null for the entire life of
+a Turbo solo race, and the game ships no `*.Script.txt` modes at all - so there is no
+`CTrackManiaRaceRules`, and with it no `RaceGhost_Add`, no `SpawnPlayer`, and no
+`CGamePlaygroundUIConfig` spectator controls. Everything Ghosts2 does on ManiaPlanet 4 goes through that
+nod.
+
+What is in place today:
+
+- one `src/Compat.as` holding every difference between the two games;
+- the loading and leaderboard paths written against Turbo's own managers (`CGameDataManagerScript` and
+  `CGameScoreAndLeaderBoardManagerScript`, reached off the menus' title ManiaApp): `GhostRetrieve` for
+  replay files, `Campaign_GetMapRecordGhost` + `GhostRetrieveFromTaskResult` for the PB,
+  `RetrieveRecords` -> `Records[i].GhostUrl` for the map's record table, `StoreRecordName` for saving;
+- honest refusals rather than wrong pokes: the playback clock and the camera-target hook report "not
+  implemented on Trackmania Turbo yet", and `LooksLikeNod` refuses every raw pointer on Turbo (its
+  vtable signature is the 64-bit ManiaPlanet one).
+
+What is still missing, and how it will work: adding a ghost goes through `CTrackManiaRace.RaceGhosts` -
+a non-const `MwFastBuffer` that the engine copies into its active ghost list at race init with **no
+validation at all** - plus a restart; playback control writes the record's StartTime directly (nothing
+rewrites it per frame on Turbo, so no hook is needed); the camera still has to be mapped. The measured
+detail is in `openplanet/research/turbo/2026-09-08-Turbo-Setup.md` and `TASKS.md`.
+
+Testing it needs a ghost, and this development install has none: it runs an offline Uplay stub, so
+Turbo's medal and record ghosts - which are served online - cannot be fetched, and the only network-free
+source is a lap somebody has actually driven.
 
 ## Known limitations
 

@@ -206,21 +206,72 @@ PluginGhost@ Ghosts_Add(CGameGhostScript@ g, const string &in source, bool displ
 // A ghost handed to RaceGhost_Add only lands in the race's pending add list (race+0x1d0); the engine builds its
 // playback record when the local player next spawns, so a ghost added mid-run never starts. Adds therefore ask
 // for a restart, coalesced over a short window so loading a page of leaderboard ghosts restarts the run once.
+// The restart is a real cost mid-lap - it throws the attempt away - so by default it only happens while you
+// are still on the start line; otherwise the pending restart is parked and offered as a button.
 uint g_spawnForAddAt = 0;    // Time::Now deadline, 0 = nothing pending
+bool g_restartOffered = false;   // an add is waiting for a restart the user has to ask for
 const uint SpawnForAddCoalesceMs = 400;
 
 void Ghosts_RequestSpawnForAdd() {
-    if (!S_RespawnOnAdd) return;
+    if (S_RespawnOnAdd == RespawnOnAdd::Never) return;
     g_spawnForAddAt = Time::Now + SpawnForAddCoalesceMs;
 }
 
 void Ghosts_CancelSpawnForAdd() { g_spawnForAddAt = 0; }
 
+// "Mid-lap" = a lap worth protecting: spawned, at least one checkpoint crossed, and still being driven.
+// Neither half is enough on its own. The race clock is not a test - in solo it runs from the end of the
+// countdown whether or not the car moved, so timing on it would suppress the restart in exactly the case it
+// is needed (adding ghosts at the line). And CurRace keeps the previous run's checkpoints, so the
+// checkpoint count alone reports mid-lap while the car sits on the start line - hence the idle check.
+const uint MidLapIdleMs = 1500;
+bool Race_MidLap() {
+    auto rules = CurrentRules();
+    if (rules is null) return false;
+    string login = GetLocalLogin();
+    for (uint i = 0; i < rules.Players.Length; i++) {
+        auto p = rules.Players[i];
+        if (p is null || p.User is null || string(p.User.Login) != login) continue;
+        if (!p.IsSpawned || p.CurRace is null || p.CurRace.Checkpoints.Length == 0) return false;
+#if TURBO
+        return true;   // no IdleDuration on Turbo; Turbo has no rules script anyway, so this never runs
+#else
+        return p.IdleDuration < MidLapIdleMs;
+#endif
+    }
+    return false;
+}
+
+// Restart now, whatever the setting says (the Ghosts tab button and the scrubber's Respawn).
+bool Ghosts_RestartForAdds() {
+    g_spawnForAddAt = 0;
+    g_restartOffered = false;
+    if (Race_SpawnLocal(S_RespawnOnAddDelayMs, true)) { SetStatus("Restarting the run so the new ghost(s) start."); return true; }
+    SetStatus("The run could not be restarted - press Respawn to start the new ghost(s).", true, true);
+    return false;
+}
+
+// The offer is stale as soon as every tracked ghost has a playback record (any spawn does that).
+void Ghosts_ExpireRestartOffer() {
+    if (!g_restartOffered) return;
+    for (uint i = 0; i < g_ghosts.Length; i++) {
+        auto pg = g_ghosts[i];
+        if (pg.inRace && !pg.gaveUp && TimeCtl_GhostTime(pg) < 0) return;
+    }
+    g_restartOffered = false;
+}
+
 void Ghosts_PumpSpawnForAdd() {
     if (g_spawnForAddAt == 0 || Time::Now < g_spawnForAddAt) return;
-    g_spawnForAddAt = 0;
-    if (Race_SpawnLocal(S_RespawnOnAddDelayMs, true)) SetStatus("Restarting the run so the new ghost(s) start.");
-    else SetStatus("Ghost added, but the run could not be restarted - press Respawn to start it.", true, true);
+    if (S_RespawnOnAdd == RespawnOnAdd::UnlessMidLap && Race_MidLap()) {
+        // Parking the restart is the whole point here: taking a lap away to start a ghost is worse than the
+        // ghost waiting for the next respawn.
+        g_spawnForAddAt = 0;
+        g_restartOffered = true;
+        SetStatus("Ghost added. It starts at your next restart - the lap you are driving was left alone.", true);
+        return;
+    }
+    Ghosts_RestartForAdds();
 }
 
 // (Re-)adds a tracked ghost to the race. Does not touch g_ghosts.
@@ -320,6 +371,7 @@ void Ghosts_Update() {
     }
 
     Ghosts_PumpSpawnForAdd();
+    Ghosts_ExpireRestartOffer();
 
     uint now = Time::Now;
     if (now - g_lastScan < S_ScanIntervalMs) return;

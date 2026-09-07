@@ -13,8 +13,14 @@ uint S_LeaderboardCount = 10;
 [Setting category="Loading" name="Show only .Replay.Gbx / .Ghost.Gbx" description="Uncheck to list every file in the folder."]
 bool S_FilterGhostFiles = true;
 
-[Setting category="Loading" name="Restart the run when a ghost is added" description="A ghost only starts playing when you (re)spawn: RaceGhost_Add puts it in the race's pending add list and the engine builds its playback record at the next spawn. On: Ghosts2 restarts your run for you after adding. Off: nothing happens until you press Respawn on the scrubber."]
-bool S_RespawnOnAdd = true;
+enum RespawnOnAdd {
+    Never = 0,
+    UnlessMidLap = 1,
+    Always = 2,
+}
+
+[Setting category="Loading" name="Restart the run when a ghost is added" description="A ghost only starts playing when you (re)spawn: RaceGhost_Add puts it in the race's pending add list and the engine builds its playback record at the next spawn. 'Unless mid-lap' restarts you normally but leaves a lap alone once you have crossed a checkpoint - the Ghosts tab offers a Restart button instead."]
+RespawnOnAdd S_RespawnOnAdd = RespawnOnAdd::UnlessMidLap;
 
 [Setting category="Loading" name="Restart countdown (ms)" min=0 max=5000 description="Countdown before your car starts again after Ghosts2 restarts the run for a newly added ghost."]
 uint S_RespawnOnAddDelayMs = 1200;
@@ -49,8 +55,8 @@ uint S_ScrubHideDelayMs = 1500;
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
 
-[Setting category="Spectate" name="Restart when you stop spectating" description="On: stopping restarts you and the ghosts together (same as Ghosts++). Off: Ghosts2 releases the engine's spectator camera clip itself and you carry on from where you are (no restart)."]
-bool S_SpectateRespawnOnStop = true;
+[Setting category="Spectate" name="Restart when you stop spectating" description="Restarting is the reliable way to end the engine's spectator camera clip (it is what Ghosts++ does). 'Unless mid-lap' does that, except while you are actually driving a lap - there Ghosts2 releases the clip itself so your lap survives."]
+RespawnOnAdd S_SpectateRespawnOnStop = RespawnOnAdd::UnlessMidLap;
 
 [Setting category="Spectate" name="Respawn delay (ms)" min=0 max=5000 description="Countdown before your car starts again after 'Stop spectating'."]
 uint S_SpectateRespawnDelayMs = 1500;

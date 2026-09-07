@@ -213,7 +213,7 @@ void DrawScrubberWindow() {
     if (t < 0) {
         UI::SameLine();
         if (CurrentRules() !is null) {
-            if (UI::Button(Icons::Play + " Respawn##g2-respawn", btn)) Race_RespawnLocal();
+            if (UI::Button(Icons::Play + " Respawn##g2-respawn", btn)) Ghosts_RestartForAdds();
             AddSimpleTooltip("Ghosts start playing on your next spawn: unspawn + respawn the local player");
         } else {
             UI::Text("\\$888(starts when you respawn)");
