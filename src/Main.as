@@ -19,7 +19,8 @@ void RenderMenu() {
 
 void RenderInterface() {
     if (!S_ShowWindow) return;
-    UI::SetNextWindowSize(560, 320, UI::Cond::FirstUseEver);
+    UI::SetNextWindowSize(520, 300, UI::Cond::FirstUseEver);
+    UI::SetNextWindowPos(int(Display::GetWidth() - 540), 40, UI::Cond::FirstUseEver);
     if (UI::Begin(MenuTitle, S_ShowWindow)) {
         DrawStateWindow();
     }
