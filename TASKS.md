@@ -48,7 +48,7 @@ Setup, hashes and API findings: `research/turbo/2026-09-08-Turbo-Setup.md`.
 - [x] Openplanet for Turbo 1.29.14 downloaded; installer helper `~/.local/bin/tm-turbo-openplanet {install|remove|status}`
 - [x] Turbo API docs mirrored to `~/.llm-general/website-archives/openplanet/turbo-raw/`
 - [x] Turbo has the same RaceGhost script API: `CTrackManiaRaceRules.RaceGhost_Add/AddWithOffset/AddModel/Remove/RemoveAll/GetStartTime/GetCurCheckpoint/GetCheckpointTime/IsReplayOver`, plus `CTrackManiaRace.RaceGhosts` and `CTrackManiaRace1PGhosts.MedalGhosts`
-- [ ] Confirm whether Turbo has `RaceGhost_IsVisible` / `RaceGhost_GetPosition` (absent from the docs index; MP4 has both) — the re-add detection depends on `IsVisible`
+- [x] Confirm whether Turbo has `RaceGhost_IsVisible` / `RaceGhost_GetPosition` (grok, binary strings 2026-09-08, research 1f62d45): **both absent** (zero occurrences in TrackmaniaTurbo.exe); full RaceGhost API = Add/AddModel/AddWithOffset/GetCheckpointTime/GetCurCheckpoint/GetStartTime/IsReplayOver/Remove/RemoveAll — use GetStartTime/IsReplayOver for the re-add detection
 - [ ] (blocked, grok-word-chart-v5rk) get Turbo launching and playable under Proton, then install Openplanet and dump `OpenplanetTurbo.json`
 - [ ] Turbo control plugin (mirror of tm-mp4-control) or a `#if TURBO` build of it, plus a screenshot/nav script set
 - [ ] Port Ghosts2: app/race/rules accessors, load paths (replay/PB/medals; leaderboards probably do not exist on Turbo), time control (the record layout and the clock function must be re-derived for 32-bit), spectate + camera (Turbo uses `CGameControlCameraTrackManiaRace`, not MP4's camera system offsets)
