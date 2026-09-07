@@ -13,6 +13,12 @@ uint S_LeaderboardCount = 10;
 [Setting category="Loading" name="Show only .Replay.Gbx / .Ghost.Gbx" description="Uncheck to list every file in the folder."]
 bool S_FilterGhostFiles = true;
 
+[Setting category="Loading" name="Restart the run when a ghost is added" description="A ghost only starts playing when you (re)spawn: RaceGhost_Add puts it in the race's pending add list and the engine builds its playback record at the next spawn. On: Ghosts2 restarts your run for you after adding. Off: nothing happens until you press Respawn on the scrubber."]
+bool S_RespawnOnAdd = true;
+
+[Setting category="Loading" name="Restart countdown (ms)" min=0 max=5000 description="Countdown before your car starts again after Ghosts2 restarts the run for a newly added ghost."]
+uint S_RespawnOnAddDelayMs = 1200;
+
 [Setting category="Auto re-add" name="Re-add ghosts the mode removes" description="LocalTimeAttackBase2 calls RaceGhost_RemoveAll() on phase changes; this puts our ghosts back."]
 bool S_AutoReAdd = true;
 

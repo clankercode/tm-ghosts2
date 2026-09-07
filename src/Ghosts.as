@@ -105,23 +105,30 @@ void Ghosts_SyncEngine() {
 // Two lists: the script-facing add list (race+0x1d0: RaceGhost_Add lands here immediately) and the live copy
 // (race+0xdd0) the engine rebuilds from it at every (re)spawn. A ghost added since the last spawn is only in the
 // first, one removed since the last spawn only in the second (still visible until the next spawn); read both.
-void Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
+// Returns every GhostInstId the race currently holds (both lists), or null if the race could not be read.
+// An instance in neither list is gone from the engine, whether or not it ever started.
+array<uint>@ Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
     auto race = CurrentRace();
-    if (race is null) return;
-    Ghosts_AdoptList(rules, race, O_Race_ScriptAddEntries, O_Race_ScriptAddEntryCount);
-    Ghosts_AdoptList(rules, race, O_Race_AddEntries, O_Race_AddEntryCount);
+    if (race is null) return null;
+    array<uint> ids;
+    if (!Ghosts_AdoptList(rules, race, O_Race_ScriptAddEntries, O_Race_ScriptAddEntryCount, ids)) return null;
+    if (!Ghosts_AdoptList(rules, race, O_Race_AddEntries, O_Race_AddEntryCount, ids)) return null;
+    return ids;
 }
 
-void Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16 listOff, uint16 countOff) {
+bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16 listOff, uint16 countOff, array<uint>@ ids) {
     uint64 entries = Dev::GetOffsetUint64(race, listOff);
     uint nEntries = uint(Dev::GetOffsetUint64(race, countOff) & 0xffffffff);
-    if (entries == 0 || nEntries == 0 || nEntries > MaxGhostRecords) return;
+    if (nEntries > MaxGhostRecords) return false;
+    if (entries == 0 || nEntries == 0) return true;
     for (uint i = 0; i < nEntries; i++) {
         uint64 e = entries + AddEntryStride * i;
         uint64 v, ghostPtr, flags;
-        try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafeU64(e); flags = SafeU64(e + 8); } catch { return; }
+        try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafeU64(e); flags = SafeU64(e + 8); } catch { return false; }
         uint instId = uint(v >> 32);
-        if (instId == 0 || Ghosts_FindByInstId(instId) !is null) continue;
+        if (instId == 0) continue;
+        if (ids.Find(instId) < 0) ids.InsertLast(instId);
+        if (Ghosts_FindByInstId(instId) !is null) continue;
         auto ctn = cast<CGameCtnGhost>(NodFromPointer(ghostPtr));
         auto pg = PluginGhost(ctn, instId, "race");
         pg.offsetMs = uint(v & 0xffffffff);
@@ -140,6 +147,7 @@ void Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
         Scrubber_AutoOpen(pg);
         trace("Ghosts2: adopted race ghost " + pg.DisplayName() + " (" + FormatTime(pg.raceTime) + ") inst " + Text::Format("0x%08x", instId) + (pg.ghost is null ? ", no script handle" : ""));
     }
+    return true;
 }
 
 PluginGhost@ Ghosts_FindEngineByCtn(CGameCtnGhost@ g) {
@@ -176,9 +184,30 @@ PluginGhost@ Ghosts_Add(CGameGhostScript@ g, const string &in source, bool displ
     }
     g_ghosts.InsertLast(pg);
     pg.inRace = true;
+    Ghosts_RequestSpawnForAdd();
     g_trackedMapUid = CurrentMapUid();
     Scrubber_AutoOpen(pg);
     return pg;
+}
+
+// A ghost handed to RaceGhost_Add only lands in the race's pending add list (race+0x1d0); the engine builds its
+// playback record when the local player next spawns, so a ghost added mid-run never starts. Adds therefore ask
+// for a restart, coalesced over a short window so loading a page of leaderboard ghosts restarts the run once.
+uint g_spawnForAddAt = 0;    // Time::Now deadline, 0 = nothing pending
+const uint SpawnForAddCoalesceMs = 400;
+
+void Ghosts_RequestSpawnForAdd() {
+    if (!S_RespawnOnAdd) return;
+    g_spawnForAddAt = Time::Now + SpawnForAddCoalesceMs;
+}
+
+void Ghosts_CancelSpawnForAdd() { g_spawnForAddAt = 0; }
+
+void Ghosts_PumpSpawnForAdd() {
+    if (g_spawnForAddAt == 0 || Time::Now < g_spawnForAddAt) return;
+    g_spawnForAddAt = 0;
+    if (Race_SpawnLocal(S_RespawnOnAddDelayMs, true)) SetStatus("Restarting the run so the new ghost(s) start.");
+    else SetStatus("Ghost added, but the run could not be restarted - press Respawn to start it.", true, true);
 }
 
 // (Re-)adds a tracked ghost to the race. Does not touch g_ghosts.
@@ -230,15 +259,18 @@ void Ghosts_Update() {
         g_trackedMapUid = uid;
         Spectate_Reset();
         Ghosts_ForgetAll();
+        Ghosts_CancelSpawnForAdd();
         return;
     }
+
+    Ghosts_PumpSpawnForAdd();
 
     uint now = Time::Now;
     if (now - g_lastScan < S_ScanIntervalMs) return;
     g_lastScan = now;
     Ghosts_SyncEngine();
     auto rules = CurrentRules();
-    if (rules !is null) Ghosts_AdoptRaceInstances(rules);
+    array<uint>@ raceInstIds = rules is null ? null : Ghosts_AdoptRaceInstances(rules);
     if (g_ghosts.Length == 0 || rules is null) return;
 
     // RaceGhosts is empty in script-driven modes. Query each tracked instance directly.
@@ -255,6 +287,11 @@ void Ghosts_Update() {
         if (visible || startTime > 0) {
             if (startTime > 0) pg.everStarted = true;
             pg.inRace = true;
+        } else if (raceInstIds !is null && raceInstIds.Find(pg.instId) < 0) {
+            // Neither add list holds this instance any more, so it is gone whether or not it ever started.
+            // Without this a ghost that never started (added mid-run, then dropped by a rebuild) stayed
+            // inRace forever: invisible, no playback record, and never re-added.
+            pg.inRace = false;
         } else {
             pg.inRace = !pg.everStarted;
         }
@@ -270,6 +307,8 @@ void Ghosts_Update() {
             warn("giving up re-adding ghost '" + pg.nickname + "' after " + S_MaxReAddAttempts + " attempts");
             continue;
         }
+        // no Ghosts_RequestSpawnForAdd() here: this fires when the mode wiped our ghosts, and its own
+        // phase change respawns the player anyway - restarting from here would fight the mode script.
         if (Ghosts_PushToRace(pg)) trace("re-added ghost '" + pg.nickname + "' (inst " + pg.instId + ")");
     }
 }

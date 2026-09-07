@@ -2,6 +2,9 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+- 2026-09-08: Adding a ghost restarts your run so it actually plays (setting Loading -> Restart the run when a ghost is added, default on; Restart countdown (ms)). `RaceGhost_Add` only queues the ghost in the race's pending add list and the engine builds its playback record at the next spawn, so a ghost added mid-run used to sit there invisible with no clock forever. Restarts are coalesced over 400 ms, so loading a page of leaderboard ghosts restarts once; the mode-driven auto re-add never triggers one.
+- 2026-09-08: A tracked instance that is in neither of the race's add lists is now treated as gone, so it gets re-added instead of lingering: a ghost that never started kept `inRace` set forever and the auto re-add skipped it.
+- 2026-09-08: The scrubber draws from `Render()` instead of `RenderInterface()`, so it stays on screen while the Openplanet overlay is hidden (its buttons still need the overlay up to take clicks).
 - 2026-09-08: Follow spectator camera can use Cam 1 / 2 / 3 (behind far / behind close / internal): scrubber "Cam N" button next to Follow (click next, right click previous), setting Spectate → Follow camera, export `SetFollowCam`, pack `ghosts2.follow_cam cam=`. The engine hard-codes cam 1 for the forced Follow camera, so the camera-target hook writes the chosen vehicle cam id (`camsys+0x180`) each frame while spectating. Scrubber strip 20% wider.
 - 2026-09-08: Stop spectating without a restart (setting Spectate → Restart when you stop spectating = off): Ghosts2 releases the terminal's spectator clip slot itself (`Spectate_DropClipLater`, ref-counted, a few frames after the UI config restore); export `StopSpectatingEx(respawn)`, pack `stop_spectating respawn=false`. Reset camera button also on the Playback tab.
 - 2026-09-08: Version 0.2.0; README screenshots (`tools/readme-shots.sh`); Ghosts tab "Reset camera" button.

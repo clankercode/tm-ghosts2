@@ -42,8 +42,13 @@ bool g_moveWindow = false;   // one-shot window move (pack `show_window x= y=`),
 int2 g_moveWindowTo = int2(0, 0);
 int TabFlags(const string &in name) { return g_selectTab == name ? UI::TabItemFlags::SetSelected : UI::TabItemFlags::None; }
 
-void RenderInterface() {
+// The scrubber draws from Render(), not RenderInterface(): it has to stay on screen while the Openplanet
+// overlay is hidden (that is when you are actually driving). Its buttons only take clicks with the overlay up.
+void Render() {
     DrawScrubberWindow();
+}
+
+void RenderInterface() {
     if (!S_ShowWindow) return;
     UI::SetNextWindowSize(720, 420, UI::Cond::FirstUseEver);
     // ImGui coordinates are game pixels / UI scale

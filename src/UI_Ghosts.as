@@ -116,7 +116,7 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         if (UI::Button(Icons::Refresh + "##readd")) {
             pg.gaveUp = false;
             pg.failedReAdds = 0;
-            Ghosts_PushToRace(pg);
+            if (Ghosts_PushToRace(pg)) Ghosts_RequestSpawnForAdd();
         }
         AddSimpleTooltip("Re-add now (RaceGhost_Add)");
         UI::SameLine();
