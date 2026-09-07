@@ -58,10 +58,30 @@ Setup, hashes and API findings: `research/turbo/2026-09-08-Turbo-Setup.md`.
 - [x] Turbo launching and playable under Proton (grok-word-chart-v5rk), Openplanet 1.29.14 installed and **running**, `OpenplanetTurbo.json` dumped. The gate was `UPLAY_ARGUMENTS`: Turbo's dinput8 shim returns from `DllMain` before it opens its own log if that variable is absent (Uplay sets it when it relaunches the game; the R1 stub does not). With it, plus `WINEDLLOVERRIDES=…;dinput8=n,b`, Openplanet loads — both are now defaults in `tm-turbo-launch-uplay`
 - [x] Turbo dev loop: RemoteBuild loads and listens on **port 30002**, DeveloperMode set, `research/turbo/tools/{turbo-restart,turbo-set-devmode,turbo-screenshot}.sh`, `openplanet-lsp check --game-target TURBO` finds the typedb by itself
 - [x] Port surface measured: `openplanet-lsp --game-target TURBO` on the unmodified MP4 sources gives **20 errors / 8 distinct missing members**. The whole `RaceGhost_*` core survives; the cost is that `CGameDataFileManagerScript` does not exist in Turbo at all and Turbo's `ScoreMgr` has no record/leaderboard/ghost functions (table in `research/turbo/2026-09-08-Turbo-Setup.md`)
-- [ ] (grok-paper-cactus-rfz2, RE on :18744) `RaceGhost_Add` wants a `CGameGhostScript@` but every ghost Turbo exposes is a `CGameCtnGhost@`, and without `DataFileMgr` there is no script path between them — find the engine wrapper. Then: how Turbo loads a replay file, and Turbo's RaceGhost record layout + per-record playback clock (32-bit, nothing carries over from MP4)
-- [ ] Ghost sources for Turbo: `CTrackManiaRace1PGhosts.MedalGhosts`, `ChallengeGhostInfos`, `CTrackManiaRace.RaceGhosts`; no PB / world leaderboard / replay browser without native help
-- [ ] Turbo control plugin (mirror of tm-mp4-control) or a `#if TURBO` build of it, plus a screenshot/nav script set
-- [ ] Port Ghosts2: app/race/rules accessors, load paths (replay/PB/medals; leaderboards probably do not exist on Turbo), time control (the record layout and the clock function must be re-derived for 32-bit), spectate + camera (Turbo uses `CGameControlCameraTrackManiaRace`, not MP4's camera system offsets)
+- [x] `CGameCtnGhost` → `CGameGhostScript`: no manual wrap needed (grok, research 683d7b0). Turbo's DataFileMgr equivalent is `CGameDataManagerScript` with `GhostRetrieve(url)`, `GhostRetrieveFromPlayer`, `GhostRetrieveFromTaskResult`, `GhostDestroy`, `Ghosts`, `StoreRecord(Name)`
+- [x] Turbo control plugin: **`tm-mp4-control` itself now builds for Turbo** (`GAME=turbo ./build.sh dev`, socket **34532**, client `tools/turbocall.py`; MP4-only commands answer "not on Turbo" instead of failing to compile). New commands `maps`, `records`, `replays`, `race_set`, `turbo_probe`, `ghost_retrieve`, `menu_call`, `fid_copy`, `ghost_push`. `PlayMap` works through `ManiaTitleFlowScriptAPI` (Turbo's name for MP4's `ManiaTitleControlScriptAPI`)
+- [x] Ghosts2 compiles, loads and runs on Turbo (`src/Compat.as` shim layer; `GAME=turbo ./build.sh dev`; verified live through the `ghosts2.*` pack on 34532), with the loading and leaderboard paths rewritten against Turbo's `DataMgr` / `ScoreMgr`
+
+### The Turbo blocker: there is no mode script
+
+**`GetApp().PlaygroundScript` is null for the whole life of a Turbo solo race** (`CTrackManiaRace1P`;
+polled every 2 s across a full map load, 14/14 null), and Turbo ships no `*.Script.txt` mode scripts at
+all — checked in the exe and both title packs. So Turbo has no `CTrackManiaRaceRules` at runtime and
+therefore no `RaceGhost_Add/Remove`, no `SpawnPlayer`, no `UIManager`/`CGamePlaygroundUIConfig` (so no
+`ForceSpectator`/`SpectatorForcedTarget`), and no rules-side `DataMgr`/`ScoreMgr`. `DataMgr` and `ScoreMgr`
+survive on the menus' title ManiaApp (`MenuManager.MenuCustom_CurrentManiaApp`) and are used from there.
+
+- [ ] (grok, RE on :18744) **Q5** — the ghost-manager chain reachable from the `CTrackManiaRace` nod with no rules object: pending `mgr+0xc4/+0xc8`, live keys `mgr+0x3ac/+0x3b0`, record pointers `mgr+0x3b8`, record `+0x0` ghost data / `+0xc` StartTime (`-1` = not started). This decides whether Ghosts2 can do anything at all on Turbo
+- [ ] (grok) **Q6** — does the record rebuild iterate `CTrackManiaRace.RaceGhosts`, and what does it validate? Openplanet's `MwFastBuffer` binding exposes `Add`/`Remove`, and `RaceGhosts` is non-const, so `RaceGhosts.Add(ghost)` + a restart would be the Turbo add path with no script API at all
+- [ ] (grok) **Q3** — spectate/camera with no `CGamePlaygroundUIConfig`: where the spectated target id lives, the resolver to hook, the vehicle-cam-id field. Turbo has no `CGameCameraSystem` on the script surface
+- [ ] Turbo playback clock: hold `record+0xc = now - wanted` from `Update()` (grok: `RaceGhost_ComputeElapsed` has exactly one caller, so nothing rewrites StartTime per frame — no hook needed). Blocked on Q5
+- [ ] Turbo medal ghosts: `DataMgr.GhostRetrieve(":Medal:<Bronze|Silver|Gold|Author>")` **hard-crashes the game** in every state tested; not wired up until that is understood (grok Q7)
+- [ ] **Environment blocker for testing:** this Turbo prefix runs the local Uplay R1 stub, so there is no Ubisoft session — `LocalUser` null, `MainUserLogged` false, `RetrieveRecords` returns `Finished_Ok` with zero rows, and the 44 "Author Medal" `ReplayRecordInfos` are 107-byte stubs whose ghosts live online. Nothing can be fetched, so nothing can be tested. **Unblocked either by signing in to Ubisoft in the Turbo prefix, or by a human driving one lap** (that produces `CGameCtnPlayground.PlayerRecordedGhost`, the only network-free ghost source)
+- [ ] Two ways to crash Turbo, both costing a restart, both recorded in the research note: `DataMgr.GhostRetrieve(":Medal:...")`, `CTrackManiaMenus.DialogQuickChooseGhostOpponents()` with a race live, and reading `CGameCtnReplayRecordInfo.ChallengeId.GetName()` or `.Fid.FullFileName`
+
+## Conventions
+
+- Every release gets a funny/jovial code name alongside the version number (Max, 2026-09-08).
 
 ## Tooling / infra
 - [x] tm-mp4-control: socket control plugin (menus, click, titles, play_map, campaigns, race, ghosts, mem, findu32(deep), race_ghost_add/remove/query, spectate)

@@ -137,13 +137,13 @@ bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
         auto pg = PluginGhost(ctn, instId, "race");
         pg.offsetMs = uint(v & 0xffffffff);
         pg.displayAsPlayerBest = (flags & 0xffffffff) != 0;
-        auto dfm = rules.DataFileMgr;
+        auto dfm = DataMgr();
         if (dfm !is null) {
             for (uint j = 0; j < dfm.Ghosts.Length; j++) {
                 auto gs = dfm.Ghosts[j];
                 if (gs is null || string(gs.Nickname) != pg.nickname || ScriptGhostTime(gs) != pg.raceTime) continue;
                 @pg.ghost = gs;
-                pg.source = "race (DataFileMgr)";
+                pg.source = "race (DataMgr)";
                 break;
             }
         }
@@ -338,7 +338,7 @@ void Ghosts_Update() {
             pg.inRace = false;
             continue;
         }
-        bool visible = rules.RaceGhost_IsVisible(pg.InstMwId());
+        bool visible = RaceGhostVisible(rules, pg.InstMwId());
         uint startTime = rules.RaceGhost_GetStartTime(pg.InstMwId());
         if (visible || startTime > 0) {
             if (startTime > 0) pg.everStarted = true;

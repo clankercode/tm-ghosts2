@@ -24,7 +24,11 @@ CGameCtnChallenge@ CurrentMap() {
     if (rules !is null && rules.Map !is null) return rules.Map;
     auto app = App();
     if (app is null) return null;
+#if TURBO
+    return app.Challenge;   // Turbo dropped CGameManiaPlanet.RootMap; the same map is CGameCtnApp.Challenge
+#else
     return app.RootMap;
+#endif
 }
 
 string CurrentMapUid() {
@@ -54,14 +58,22 @@ MwId LocalUserId() {
     return MwId();
 }
 
-// Raw address of a nod (temporarily stores the handle in a scratch nod's first slot and reads it back as u64).
+// Raw address of a nod (temporarily stores the handle in a scratch nod's first slot and reads it back).
+// Turbo is 32-bit (MANIA32), so the slot is 4 bytes there and a u64 read would drag in the next field.
 uint64 NodPointer(CMwNod@ nod) {
     if (nod is null) return 0;
     auto tmpNod = CMwNod();
+#if MANIA32
+    uint saved = Dev::GetOffsetUint32(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, nod);
+    uint64 ptr = uint64(Dev::GetOffsetUint32(tmpNod, 0));
+    Dev::SetOffset(tmpNod, 0, saved);
+#else
     uint64 saved = Dev::GetOffsetUint64(tmpNod, 0);
     Dev::SetOffset(tmpNod, 0, nod);
     uint64 ptr = Dev::GetOffsetUint64(tmpNod, 0);
     Dev::SetOffset(tmpNod, 0, saved);
+#endif
     return ptr;
 }
 
@@ -69,19 +81,34 @@ uint64 NodPointer(CMwNod@ nod) {
 CMwNod@ NodFromPointer(uint64 ptr) {
     if (!LooksLikeNod(ptr)) return null;
     auto tmpNod = CMwNod();
+#if MANIA32
+    uint saved = Dev::GetOffsetUint32(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, uint(ptr));
+    CMwNod@ nod = Dev::GetOffsetNod(tmpNod, 0);
+    Dev::SetOffset(tmpNod, 0, saved);
+#else
     uint64 saved = Dev::GetOffsetUint64(tmpNod, 0);
     Dev::SetOffset(tmpNod, 0, ptr);
     CMwNod@ nod = Dev::GetOffsetNod(tmpNod, 0);
     Dev::SetOffset(tmpNod, 0, saved);
+#endif
     return nod;
 }
 
 // True while the game's own in-game menu (Escape) is open.
 bool InGameMenuOpen() {
     auto app = App();
-    if (app is null || app.Network is null) return false;
+    if (app is null) return false;
+#if TURBO
+    // No CGamePlaygroundClientScriptAPI.IsInGameMenuDisplayed on Turbo; the menus script API has the
+    // same flag one level up.
+    auto mp = app.ManiaPlanetScriptAPI;
+    return mp !is null && mp.ActiveContext_InGameMenuDisplayed;
+#else
+    if (app.Network is null) return false;
     auto pcs = app.Network.PlaygroundClientScriptAPI;
     return pcs !is null && pcs.IsInGameMenuDisplayed;
+#endif
 }
 
 string TypeName(CMwNod@ nod) {
@@ -102,8 +129,9 @@ string GhostKey(const string &in nickname, uint raceTime) {
 }
 
 uint ScriptGhostTime(CGameGhostScript@ g) {
-    if (g is null || g.Result is null) return 0;
-    int t = g.Result.Time;
+    auto res = GhostResult(g);
+    if (res is null) return 0;
+    int t = res.Time;
     return t < 0 ? 0 : uint(t);
 }
 
@@ -120,8 +148,16 @@ bool Race_CanAddGhosts() {
     return rules !is null && rules.Players.Length > 0;
 }
 
+// Turbo never has a rules script, so the whole RaceGhost_* surface is missing rather than merely refusing.
+bool HasRulesScript() { return CurrentRules() !is null; }
+
 // Suffix for a rejected add: name the usual cause instead of leaving the user with a bare rejection.
-string AddRejectedWhy() { return Race_CanAddGhosts() ? "." : " - " + ClassicRaceHint + "."; }
+string AddRejectedWhy() {
+#if TURBO
+    if (CurrentRules() is null) return " - " + TurboNoRulesHint + ".";
+#endif
+    return Race_CanAddGhosts() ? "." : " - " + ClassicRaceHint + ".";
+}
 
 const string ClassicRaceHint = "this race is the legacy solo playground (CTrackManiaRace1P), whose rules script has no players - RaceGhost_Add is refused there and only the ghosts picked in the game's own opponent dialog play. Start the map through a mode script (the title pack's Solo/Play flow) to load ghosts into it";
 
@@ -147,6 +183,11 @@ bool Race_SpawnLocal(uint delayMs, bool unspawn) {
 // Vtable sanity check before treating an address as a nod (Reflection on a non-nod crashes the game):
 // the vtable must be in the exe image and its first entry the shared CMwNod base slot (image offset 0x141dc0).
 bool LooksLikeNod(uint64 ptr) {
+#if TURBO
+    // The base-slot signature below is the 64-bit MP4 one. Until the 32-bit equivalent is measured, refuse
+    // every raw pointer on Turbo rather than hand an unverified address to Reflection (that crashes the game).
+    return false;
+#else
     if (ptr == 0 || (ptr & 7) != 0) return false;
     uint64 base = Dev::BaseAddress();
     try {
@@ -154,5 +195,6 @@ bool LooksLikeNod(uint64 ptr) {
         if (vt < base || vt >= base + 0x2000000 || (vt & 7) != 0) return false;
         return Dev::SafeReadUInt64(vt) == base + 0x141dc0;
     } catch { return false; }
+#endif
 }
 

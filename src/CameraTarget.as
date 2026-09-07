@@ -35,6 +35,12 @@ void OnCameraResolveTarget(uint64 rcx) {
 bool CamTarget_InstallHook() {
     if (g_camHook !is null) return true;
     if (g_camLastErr.Length > 0) return false;
+#if TURBO
+    // Turbo has no CGameCameraSystem on the script surface and its camera classes are different
+    // (CGameControlCameraTrackManiaRace/2/3); the MP4 resolver address is 64-bit and means nothing here.
+    g_camLastErr = "camera target hook is not implemented on Trackmania Turbo yet";
+    return false;
+#else
     uint64 ptr = Dev::BaseAddress() + CamResolveTarget_RVA;
     string bytes = "";
     try {
@@ -49,6 +55,7 @@ bool CamTarget_InstallHook() {
     if (g_camHook is null) { g_camLastErr = "Dev::Hook (camera) failed"; warn("Ghosts2: " + g_camLastErr); return false; }
     trace("Ghosts2: camera target hook installed at " + Text::FormatPointer(ptr));
     return true;
+#endif
 }
 
 void CamTarget_RemoveHook() {

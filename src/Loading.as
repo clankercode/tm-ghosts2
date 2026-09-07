@@ -94,6 +94,23 @@ void Load_ReplayFileCoro(const string &in path) {
 }
 
 void LoadReplayInner(const string &in path) {
+#if TURBO
+    // Turbo has no DataFileMgr.Replay_Load. CGameDataManagerScript.GhostRetrieve(url) is the whole loader:
+    // it resolves ":Medal:<name>", ":Url:<http...>" and a plain path, and hands back a CGameGhostScript.
+    auto dm = DataMgr();
+    if (dm is null) { SetStatus("No DataMgr.", true, true); return; }
+    SetStatus("Loading " + BaseName(path) + " ...");
+    auto g = dm.GhostRetrieve(path);
+    if (g is null) { SetStatus("GhostRetrieve found nothing at " + path + " (" + tostring(dm.LatestResult) + ").", true, true); return; }
+    uint deadline = Time::Now + 20000;
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    if (g.DataState != CGameGhostScript::EDataState::Ready) {
+        SetStatus("GhostRetrieve returned " + tostring(g.DataState) + " for " + BaseName(path) + ".", true, true);
+        return;
+    }
+    if (Ghosts_Add(g, "replay") !is null) SetStatus("Added " + BaseName(path) + ".", true);
+    else SetStatus("Could not add the ghost" + AddRejectedWhy(), true, true);
+#else
     auto rules = CurrentRules();
     if (rules is null) {
         SetStatus("Not in a TrackMania race (no CTrackManiaRaceRules).", true, true);
@@ -124,6 +141,7 @@ void LoadReplayInner(const string &in path) {
         SetStatus("Replay_Load failed: " + string(task.ErrorDescription), true, true);
     }
     dfm.TaskResult_Release(task.Id);
+#endif
 }
 
 void Load_PersonalBest() {
@@ -150,6 +168,14 @@ void Load_MedalCoro(const string &in levelStr) {
 }
 
 void LoadMedalInner(uint level) {
+#if TURBO
+    // Turbo's ScoreMgr has no Map_GetMultiAsyncLevelRecordGhost. The medal ghosts are the 44 official
+    // "Author Medal" replays in CGameCtnApp.ReplayRecordInfos, and DataMgr.GhostRetrieve(":Medal:<name>")
+    // is meant to reach them - but that call hard-crashes Turbo in every state tested so far
+    // (research/turbo/2026-09-08-Turbo-Setup.md), so it is not wired up until the crash is understood.
+    SetStatus("Medal ghosts are not available on Turbo yet: the engine's :Medal: ghost loader crashes the "
+              "game, and Turbo's ScoreMgr has no medal-ghost request. Level " + level + " not loaded.", true, true);
+#else
     auto rules = CurrentRules();
     if (rules is null || rules.ScoreMgr is null) {
         SetStatus("Cannot load medal: no ScoreMgr.", true, true);
@@ -176,9 +202,35 @@ void LoadMedalInner(uint level) {
         SetStatus("Medal ghost request failed: " + string(task.ErrorDescription), true, true);
     }
     rules.ScoreMgr.TaskResult_Release(task.Id);
+#endif
 }
 
 void LoadPbInner() {
+#if TURBO
+    // Turbo: Campaign_GetMapRecordGhost gives a ghost *handle* task, which DataMgr turns into a ghost.
+    auto sm = ScoreMgr();
+    auto dm = DataMgr();
+    if (sm is null || dm is null) { SetStatus("No ScoreMgr / DataMgr.", true, true); return; }
+    string uid = CurrentMapUid();
+    if (uid.Length == 0) { SetStatus("No map loaded.", true, true); return; }
+    SetStatus("Requesting personal best ghost ...");
+    auto task = sm.Campaign_GetMapRecordGhost(LocalUserId(), uid);
+    if (task is null) { SetStatus("Campaign_GetMapRecordGhost returned null.", true, true); return; }
+    while (task.IsProcessing) yield();
+    if (!task.HasSucceeded) {
+        SetStatus("Campaign_GetMapRecordGhost failed: " + string(task.ErrorDescription), true, true);
+        sm.ReleaseTaskResult(task.Id);
+        return;
+    }
+    auto g = dm.GhostRetrieveFromTaskResult(task);
+    sm.ReleaseTaskResult(task.Id);
+    if (g is null) { SetStatus("No personal best ghost for this map.", true); return; }
+    uint deadline = Time::Now + 20000;
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    if (g.DataState != CGameGhostScript::EDataState::Ready) { SetStatus("PB ghost came back " + tostring(g.DataState) + ".", true, true); return; }
+    if (Ghosts_Add(g, "PB") !is null) SetStatus("Added personal best ghost.", true);
+    else SetStatus("Could not add the personal best ghost" + AddRejectedWhy(), true, true);
+#else
     auto rules = CurrentRules();
     if (rules is null) {
         SetStatus("Not in a TrackMania race (no CTrackManiaRaceRules).", true, true);
@@ -214,6 +266,7 @@ void LoadPbInner() {
         SetStatus("Map_GetRecordGhost failed: " + string(task.ErrorDescription), true, true);
     }
     sm.TaskResult_Release(task.Id);
+#endif
 }
 
 // --- saving ----------------------------------------------------------------
@@ -238,6 +291,18 @@ void Save_GhostCoro() {
 }
 
 void SaveGhostInner() {
+#if TURBO
+    // Turbo: DataMgr.StoreRecordName writes the ghost into the user's records for this map; there is no
+    // Replay_Save, so a ghost cannot be written out as a .Replay.Gbx.
+    auto dm = DataMgr();
+    if (dm is null) { SetStatus("Cannot save: no DataMgr.", true, true); return; }
+    string uid = CurrentMapUid();
+    if (uid.Length == 0) { SetStatus("Cannot save: no map.", true, true); return; }
+    string name = g_saveName;
+    if (name.Length == 0) name = "Ghosts2";
+    dm.StoreRecordName(uid, LocalUserId(), g_saveGhost, name);
+    SetStatus("Stored " + name + " in this map's records (Turbo has no replay file writer).", true);
+#else
     auto rules = CurrentRules();
     if (rules is null || rules.DataFileMgr is null) {
         SetStatus("Cannot save: no DataFileMgr.", true, true);
@@ -265,4 +330,5 @@ void SaveGhostInner() {
         SetStatus("Replay_Save failed: " + string(task.ErrorDescription), true, true);
     }
     dfm.TaskResult_Release(task.Id);
+#endif
 }

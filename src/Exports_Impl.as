@@ -15,7 +15,7 @@ namespace Ghosts2 {
             // (that happens at the next spawn), which is very different from "missing".
             row["status"] = pg.gaveUp ? "gave_up" : (pg.inRace ? (TimeCtl_GhostTime(pg) >= 0 ? "in_race" : "queued") : "missing");
             row["startTime"] = rules is null || pg.instId == 0 ? 0 : rules.RaceGhost_GetStartTime(pg.InstMwId());
-            row["visible"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsVisible(pg.InstMwId());
+            row["visible"] = RaceGhostVisible(rules, pg.InstMwId());
             row["replayOver"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsReplayOver(pg.InstMwId());
             row["ghostTime"] = TimeCtl_GhostTime(pg);
             row["paused"] = pg.paused;

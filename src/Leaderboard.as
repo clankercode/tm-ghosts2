@@ -66,6 +66,42 @@ void Lb_FetchCoro(const string &in offsetStr) {
 }
 
 void LbFetchInner(uint offset) {
+#if TURBO
+    // Turbo has no MapLeaderBoard_GetPlayerList. DataMgr.RetrieveRecords(MapInfo, UserId) fills
+    // DataMgr.Records - the map's record table, medals included - and every row carries a GhostUrl that
+    // GhostRetrieve accepts, so this is Turbo's leaderboard. It is one page, so `offset` is ignored.
+    auto dm = DataMgr();
+    if (dm is null) { g_lbStatus = "No DataMgr."; return; }
+    auto map = CurrentMap();
+    if (map is null || map.MapInfo is null) { g_lbStatus = "No map loaded."; return; }
+    string uid = CurrentMapUid();
+    g_lbStatus = "Fetching this map's records ...";
+    dm.RetrieveRecords(map.MapInfo, LocalUserId());
+    uint deadline = Time::Now + 20000;
+    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline) yield();
+    if (dm.LatestResult != CGameDataManagerScript::EResult::Finished_Ok) {
+        g_lbStatus = "RetrieveRecords: " + tostring(dm.LatestResult);
+        return;
+    }
+    g_lbEntries.RemoveRange(0, g_lbEntries.Length);
+    for (uint i = 0; i < dm.Records.Length; i++) {
+        auto r = dm.Records[i];
+        if (r is null) continue;
+        LbEntry e;
+        e.rank = r.Rank > 0 ? r.Rank : i + 1;
+        e.login = "";
+        e.name = Text::OpenplanetFormatCodes(string(r.Name));
+        e.plainName = Text::StripFormatCodes(string(r.Name));
+        e.score = r.Time;
+        e.fileName = r.GhostName;
+        e.url = r.GhostUrl;
+        g_lbEntries.InsertLast(e);
+    }
+    g_lbMapUid = uid;
+    g_lbZone = "map";
+    g_lbOffset = 0;
+    g_lbStatus = "" + g_lbEntries.Length + " record(s) for this map";
+#else
     auto rules = CurrentRules();
     if (rules is null || rules.ScoreMgr is null) { g_lbStatus = "No ScoreMgr (not in a race)."; return; }
     string uid = CurrentMapUid();
@@ -100,6 +136,7 @@ void LbFetchInner(uint offset) {
         warn("Ghosts2: " + g_lbStatus);
     }
     rules.ScoreMgr.TaskResult_Release(task.Id);
+#endif
 }
 
 LbEntry@ Lb_FindByRank(uint rank) {
@@ -123,6 +160,22 @@ void Lb_LoadCoro(const string &in rankStr) {
 }
 
 void LbLoadInner(uint rank) {
+#if TURBO
+    auto e = Lb_FindByRank(rank);
+    if (e is null) { SetStatus("Leaderboard entry #" + rank + " is not in the fetched list.", true, true); return; }
+    auto dm = DataMgr();
+    if (dm is null) { SetStatus("No DataMgr.", true, true); return; }
+    if (e.url.Length == 0) { SetStatus("That record has no ghost url.", true, true); return; }
+    string label = "#" + e.rank + " " + (e.plainName.Length > 0 ? e.plainName : e.login);
+    SetStatus("Fetching ghost " + label + " ...");
+    auto g = dm.GhostRetrieve(e.url);
+    if (g is null) { SetStatus("GhostRetrieve returned nothing for " + label + " (" + tostring(dm.LatestResult) + ").", true, true); return; }
+    uint deadline = Time::Now + 20000;
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    if (g.DataState != CGameGhostScript::EDataState::Ready) { SetStatus("Ghost " + label + " came back " + tostring(g.DataState) + ".", true, true); return; }
+    if (Ghosts_Add(g, "LB " + label) !is null) SetStatus("Added leaderboard ghost " + label + " (" + FormatTime(e.score) + ").", true);
+    else SetStatus("Could not add the ghost " + label + AddRejectedWhy(), true, true);
+#else
     auto e = Lb_FindByRank(rank);
     if (e is null) { SetStatus("Leaderboard entry #" + rank + " is not in the fetched list.", true, true); return; }
     auto rules = CurrentRules();
@@ -141,6 +194,7 @@ void LbLoadInner(uint rank) {
         SetStatus("Ghost_Download failed for " + label + ": " + string(task.ErrorDescription), true, true);
     }
     rules.DataFileMgr.TaskResult_Release(task.Id);
+#endif
 }
 
 Json::Value@ Lb_ToJson() {

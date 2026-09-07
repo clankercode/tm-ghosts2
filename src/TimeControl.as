@@ -82,6 +82,14 @@ bool TimeCtl_HookInstalled() { return g_clockHook !is null; }
 
 bool TimeCtl_InstallHook() {
     if (g_clockHook !is null) return true;
+#if TURBO
+    // The MP4 hook site (RaceGhostRecord_UpdatePlaybackTime, 64-bit) has no Turbo counterpart yet: Turbo is
+    // 32-bit, its playback records live on the race's ghost manager rather than on the race, and the engine
+    // computes the elapsed time on demand instead of writing it per frame. Ghost time control is off on
+    // Turbo until that is mapped (research/turbo/2026-09-08-Turbo-RaceGhost-RE.md).
+    g_timeCtlLastErr = "ghost time control is not implemented on Trackmania Turbo yet";
+    return false;
+#else
     uint64 ptr = Dev::BaseAddress() + UpdatePlaybackTime_RVA;
     string bytes = "";
     try {
@@ -96,6 +104,7 @@ bool TimeCtl_InstallHook() {
     if (g_clockHook is null) { g_timeCtlLastErr = "Dev::Hook failed"; warn("Ghosts2: " + g_timeCtlLastErr); return false; }
     trace("Ghosts2: playback clock hook installed at " + Text::FormatPointer(ptr));
     return true;
+#endif
 }
 
 void TimeCtl_RemoveHook() {
