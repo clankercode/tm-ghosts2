@@ -106,6 +106,8 @@ namespace Ghosts2Mp4Pack {
         }
         if (cmd == "show_window") {
             Ghosts2::ShowWindow(bool(args.Get("visible", true)));
+            if (args.HasKey("tab")) Ghosts2::SelectTab(string(args["tab"]));
+            if (args.HasKey("x") && args.HasKey("y")) Ghosts2::MoveWindow(int(args["x"]), int(args["y"]));
             return OkTrue();
         }
         return Err("unknown ghosts2 cmd: " + cmd);

@@ -2,6 +2,7 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+- 2026-09-08: Playback moved to its own tab as a table (controls left, name, time right-aligned, state icons) with a lock / pause-all / resume-all / release-all row; pack `show_window tab= x= y=` (exports `SelectTab`, `MoveWindow`) select a tab / move the window for scripted screenshots. First-use window position now accounts for the UI scale.
 - 2026-09-08: Ghost and map names render through `Text::OpenplanetFormatCodes` (colours/bold instead of raw `$` codes) in the ghost list, scrubber, leaderboard and State tab; save filenames and log/source strings use the stripped name.
 - 2026-09-08: Right-click on the scrubber's eye opens a ghost picker (every loaded ghost, greyed when it has no playback right now, plus Stop spectating).
 - 2026-09-08: Spectator camera button on the scrubber (pack `ghosts2.cam type=`, export `SetCameraType`): Replay (0, the engine's camera clip), Follow (1, chase cam), Track (2, track cameras), Game (15, the game's own spectator camera controls). Mapping verified against the live camera-system id; a free-fly camera is still being looked for.

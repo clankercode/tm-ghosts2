@@ -16,6 +16,8 @@ namespace Ghosts2 {
     import void StopSpectating() from "Ghosts2";
     import Json::Value@ State() from "Ghosts2";
     import void ShowWindow(bool visible) from "Ghosts2";
+    import void SelectTab(const string &in tab) from "Ghosts2";   // "ghosts" | "playback" | "load" | "state"
+    import void MoveWindow(int x, int y) from "Ghosts2";          // one-shot, ImGui coordinates
     // Time control (script modes only): ghost time in ms, or -1 when not started / unavailable.
     import int GetGhostTime(uint instId) from "Ghosts2";
     import bool Seek(uint instId, uint ghostTimeMs) from "Ghosts2";

@@ -27,8 +27,6 @@ void DrawGhostsTab() {
     UI::Separator();
     DrawPluginGhostsTable(rules);
     UI::Separator();
-    DrawPlaybackControls();
-    UI::Separator();
     DrawEngineGhosts();
 }
 
@@ -135,25 +133,68 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
     if (toRemove !is null) Ghosts_Remove(toRemove);
 }
 
-void DrawPlaybackControls() {
+void DrawPlaybackTab() {
     if (!TimeCtl_Available()) {
-        if (g_ghosts.Length > 0 || g_engineGhosts.Length > 0) UI::TextDisabled("Playback control needs a TrackMania race" + (S_TimeControl ? "" : " and the Time control setting"));
+        UI::TextDisabled("Playback control needs a TrackMania race" + (S_TimeControl ? "" : " and the Time control setting") + ".");
         return;
     }
-    UI::SeparatorText("Playback");
+    auto members = Lock_Members();
+    bool locked = Lock_Enabled();
+    bool anyPlaying = false;
+    for (uint i = 0; i < members.Length; i++) if (!members[i].paused) anyPlaying = true;
+
+    if (UI::Button((locked ? "\\$8f8" + Icons::Lock + " Locked" : Icons::Unlock + " Unlocked") + "##lockall", vec2(100, 0))) Lock_Set(!locked);
+    if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Every started ghost is driven together and kept in sync. Click to control ghosts individually." : "Ghosts are controlled individually. Click to lock them together.");
+    UI::SameLine();
+    UI::BeginDisabled(members.Length == 0);
+    if (UI::Button((anyPlaying ? Icons::Pause + " Pause all" : Icons::Play + " Resume all") + "##allpp", vec2(110, 0))) {
+        for (uint i = 0; i < members.Length; i++) TimeCtl_SetPaused(members[i], anyPlaying);
+    }
+    UI::SameLine();
+    if (UI::Button(Icons::Undo + " Release all##allsync")) {
+        for (uint i = 0; i < members.Length; i++) TimeCtl_Release(members[i]);
+    }
+    if (UI::IsItemHovered()) UI::SetTooltip("Give every clock back to the game");
+    UI::EndDisabled();
+    UI::SameLine();
+    UI::AlignTextToFramePadding();
+    UI::Text("\\$888" + members.Length + " started");
+
+    UI::Separator();
+    if (g_ghosts.Length == 0 && g_engineGhosts.Length == 0) {
+        UI::TextDisabled("(no ghosts - use the Load tab)");
+        return;
+    }
+    if (!UI::BeginTable("g2-playback", 4, UI::TableFlags::SizingStretchProp | UI::TableFlags::RowBg)) return;
+    UI::TableSetupColumn("Controls", UI::TableColumnFlags::WidthFixed, 176);
+    UI::TableSetupColumn("Ghost");
+    UI::TableSetupColumn("Time", UI::TableColumnFlags::WidthFixed, 136);
+    UI::TableSetupColumn("State", UI::TableColumnFlags::WidthFixed, 60);
+    UI::TableHeadersRow();
     DrawPlaybackRows(g_ghosts, "pb");
     DrawPlaybackRows(g_engineGhosts, "pe");
+    UI::EndTable();
+}
+
+// Right-align text inside the current table cell.
+void CellTextRight(const string &in text) {
+    float w = UI::MeasureString(text).x;
+    float avail = UI::GetContentRegionAvail().x;
+    if (avail > w) UI::SetCursorPosX(UI::GetCursorPos().x + avail - w);
+    UI::AlignTextToFramePadding();
+    UI::Text(text);
 }
 
 void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
+    bool locked = Lock_Enabled();
     for (uint i = 0; i < list.Length; i++) {
         auto pg = list[i];
         if (!pg.engine && pg.instId == 0) continue;
         UI::PushID(idPrefix + i);
         int t = TimeCtl_GhostTime(pg);
-        UI::AlignTextToFramePadding();
-        UI::Text(pg.DisplayName());
-        UI::SameLine();
+        UI::TableNextRow();
+
+        UI::TableNextColumn();
         UI::BeginDisabled(t < 0);
         bool scrubOpen = g_scrubGhost is pg;
         if (UI::Button((scrubOpen ? "\\$8f8" : "") + Icons::Sliders + "##scrub")) {
@@ -175,9 +216,22 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
         if (UI::IsItemHovered()) UI::SetTooltip("Give the clock back to the game");
         UI::EndDisabled();
         UI::EndDisabled();
-        UI::SameLine();
+
+        UI::TableNextColumn();
         UI::AlignTextToFramePadding();
-        UI::Text("\\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + (pg.Controlled() ? "  \\$8f8" + Icons::Clock : "") + (Lock_Enabled() && t >= 0 ? " " + Icons::Lock : ""));
+        UI::Text(pg.DisplayName());
+        if (pg.engine) { UI::SameLine(); UI::Text("\\$888engine"); }
+
+        UI::TableNextColumn();
+        CellTextRight(t < 0 ? "\\$888not started" : FormatTime(uint(t)) + " \\$888/ " + FormatTime(pg.raceTime));
+
+        UI::TableNextColumn();
+        bool isSpec = g_specActive && g_specInstId != 0 && g_specInstId == pg.instId;
+        string state = (isSpec ? "\\$8f8" + Icons::Eye + " " : "") + (pg.Controlled() ? "\\$8f8" + Icons::Clock + " " : "") + (locked && t >= 0 ? "\\$aaa" + Icons::Lock : "");
+        if (state.Length > 0) {
+            CellTextRight(state);
+            if (UI::IsItemHovered()) UI::SetTooltip((isSpec ? "Spectating\n" : "") + (pg.Controlled() ? "Clock owned by Ghosts2\n" : "") + (locked && t >= 0 ? "In the lock group" : ""));
+        }
         UI::PopID();
     }
 }

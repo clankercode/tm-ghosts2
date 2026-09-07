@@ -14,6 +14,10 @@ rather than the TM2020 ghost-clip manager.
     **save**, plus **Remove all** (`RaceGhost_RemoveAll`).
   - Shows `PlayerBestGhost` / `PlayerRecordedGhost` and toggles for the free engine ghosts
     (`IsBestRaceGhostVisible`, `MedalGhost_ShowGold/Silver/Bronze`).
+- **Playback tab** — one row per started ghost: scrubber / pause / speed / resync buttons on the
+  left, the name, the ghost's time over its race time, and state icons (eye = spectated, clock =
+  clock owned by Ghosts2, padlock = in the lock group) on the right. The top row toggles the lock
+  and pauses, resumes or releases every started ghost at once.
 - **Load tab**
   - A folder browser over the game's `Replays` folder (`IO::FromUserGameFolder("Replays")`,
     overridable in settings) listing `*.Replay.Gbx` / `*.Ghost.Gbx`. Loading runs
@@ -54,7 +58,7 @@ Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Rem
 build with `mp4pack/build.sh`) exposes the same operations through
 `tm-mp4-control/tools/mp4call.py ghosts2.list` (subcommands: `state`, `load_replay`,
 `load_pb`, `load_medal`, `remove`, `remove_all`, `spectate`, `stop_spectating`,
-`show_window`, `ghost_time instId=`, `seek instId= ms=`, `pause instId= paused=`,
+`show_window visible= [tab=ghosts|playback|load|state] [x= y=]`, `ghost_time instId=`, `seek instId= ms=`, `pause instId= paused=`,
 `speed instId= speed=`, `resync instId=`, `scrubber instId= visible=`). The pack must not re-declare the imports: Openplanet compiles a
 dependency's `exports` files into the dependent module.
 

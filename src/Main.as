@@ -35,18 +35,28 @@ void RenderMenu() {
     }
 }
 
+// One-shot tab selection (export ShowWindow / pack `show_window tab=`), consumed by the next frame.
+string g_selectTab = "";
+bool g_moveWindow = false;   // one-shot window move (pack `show_window x= y=`), for scripted screenshots
+int2 g_moveWindowTo = int2(0, 0);
+int TabFlags(const string &in name) { return g_selectTab == name ? UI::TabItemFlags::SetSelected : UI::TabItemFlags::None; }
+
 void RenderInterface() {
     DrawScrubberWindow();
     if (!S_ShowWindow) return;
-    UI::SetNextWindowSize(640, 420, UI::Cond::FirstUseEver);
-    UI::SetNextWindowPos(int(Display::GetWidth() - 660), 40, UI::Cond::FirstUseEver);
+    UI::SetNextWindowSize(720, 420, UI::Cond::FirstUseEver);
+    // ImGui coordinates are game pixels / UI scale
+    UI::SetNextWindowPos(int(float(Display::GetWidth()) / UI::GetScale()) - 740, 40, UI::Cond::FirstUseEver);
+    if (g_moveWindow) { g_moveWindow = false; UI::SetNextWindowPos(g_moveWindowTo.x, g_moveWindowTo.y, UI::Cond::Always); }
     if (UI::Begin(MenuTitle, S_ShowWindow)) {
         // MP4 Openplanet: UI::BeginTabBar returns void (not bool as in TM2020)
         UI::BeginTabBar("g2-tabs");
-        if (UI::BeginTabItem("Ghosts")) { DrawGhostsTab(); UI::EndTabItem(); }
-        if (UI::BeginTabItem("Load")) { DrawLoadTab(); UI::EndTabItem(); }
-        if (UI::BeginTabItem("State")) { DrawStateTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("Ghosts", TabFlags("ghosts"))) { DrawGhostsTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("Playback", TabFlags("playback"))) { DrawPlaybackTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("Load", TabFlags("load"))) { DrawLoadTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("State", TabFlags("state"))) { DrawStateTab(); UI::EndTabItem(); }
         UI::EndTabBar();
+        g_selectTab = "";
     }
     UI::End();
 }
