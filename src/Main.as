@@ -37,6 +37,7 @@ void RenderMenu() {
 
 // One-shot tab selection (export ShowWindow / pack `show_window tab=`), consumed by the next frame.
 string g_selectTab = "";
+int g_selectTabFrames = 0;   // hold the SetSelected flag for a few frames (a single frame was sometimes missed)
 bool g_moveWindow = false;   // one-shot window move (pack `show_window x= y=`), for scripted screenshots
 int2 g_moveWindowTo = int2(0, 0);
 int TabFlags(const string &in name) { return g_selectTab == name ? UI::TabItemFlags::SetSelected : UI::TabItemFlags::None; }
@@ -56,7 +57,7 @@ void RenderInterface() {
         if (UI::BeginTabItem("Load", TabFlags("load"))) { DrawLoadTab(); UI::EndTabItem(); }
         if (UI::BeginTabItem("State", TabFlags("state"))) { DrawStateTab(); UI::EndTabItem(); }
         UI::EndTabBar();
-        g_selectTab = "";
+        if (g_selectTabFrames > 0 && --g_selectTabFrames == 0) g_selectTab = "";
     }
     UI::End();
 }

@@ -132,7 +132,7 @@ namespace Ghosts2 {
     }
 
     void ShowWindow(bool visible) { S_ShowWindow = visible; }
-    void SelectTab(const string &in tab) { g_selectTab = tab.ToLower(); }
+    void SelectTab(const string &in tab) { g_selectTab = tab.ToLower(); g_selectTabFrames = 3; }
     void MoveWindow(int x, int y) { g_moveWindow = true; g_moveWindowTo = int2(x, y); }
 
     PluginGhost@ FindTracked(uint instId) { return Ghosts_FindByInstId(instId); }

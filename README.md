@@ -1,77 +1,117 @@
 # Ghosts2
 
-An Openplanet plugin for **ManiaPlanet 4 / TrackMania 2** that lists, loads, removes and
-spectates race ghosts. It is a small clone of the TM2020 plugin
-[Ghosts++](../tm-ghosts-plus-plus), rebuilt on the MP4 API (`CTrackManiaRaceRules.RaceGhost_*`)
-rather than the TM2020 ghost-clip manager.
+Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania 2**, from an
+[Openplanet](https://openplanet.dev) plugin. A clone of the TM2020 plugin
+[Ghosts++](https://openplanet.dev/plugin/ghostspp) rebuilt on the MP4 engine.
 
-![Playback tab](docs/img/playback-tab.png) ![Ghosts tab](docs/img/ghosts-tab.png)
+> ## 📦 Download
+> **Grab the `.op` file from the [Releases page](https://github.com/clankercode/tm-ghosts2/releases/latest)**
+> and drop it into your `Openplanet4/Plugins` folder (Documents › ManiaPlanet › Openplanet4 › Plugins on
+> Windows). Reload plugins from the Openplanet menu, or restart the game.
 
-![Spectating a ghost with the scrubber](docs/img/spectate.png)
+![Following the pack: Follow camera behind the slowest ghost, scrubber at the bottom](docs/img/hero.png)
 
-## What it does
+## Features
 
-- **Ghosts tab**
-  - Lists every entry of `CTrackManiaRace.RaceGhosts`: nickname, race time, respawns, login,
-    and — for ghosts this plugin added — the `MwId` returned by `RaceGhost_Add`.
-  - Lists the ghosts Ghosts2 loaded, with per-row **remove**, **re-add**, **spectate** and
-    **save**, plus **Remove all** (`RaceGhost_RemoveAll`).
-  - Shows `PlayerBestGhost` / `PlayerRecordedGhost` and toggles for the free engine ghosts
-    (`IsBestRaceGhostVisible`, `MedalGhost_ShowGold/Silver/Bronze`).
-- **Playback tab** — one row per started ghost: spectate / scrubber / pause / speed / resync buttons
-  on the left, the name, the ghost's time over its race time, and state icons (eye = spectated, clock =
-  clock owned by Ghosts2, padlock = in the lock group) on the right. The top row toggles the lock
-  and pauses, resumes or releases every started ghost at once.
-- **Load tab**
-  - A folder browser over the game's `Replays` folder (`IO::FromUserGameFolder("Replays")`,
-    overridable in settings) listing `*.Replay.Gbx` / `*.Ghost.Gbx`. Loading runs
-    `DataFileMgr.Replay_Load` in a coroutine and adds every returned ghost to the race.
-  - **Load my PB** via `ScoreMgr.Map_GetRecordGhost(localUser, mapUid, "")`.
-  - **Load author/gold/silver/bronze ghost** via `ScoreMgr.Map_GetMultiAsyncLevelRecordGhost`
-    (levels 4/3/2/1). Nadeo campaign maps only — TMX maps have no medal ghosts, so failures
-    and null ghosts notify.
-- **Spectate** — writes the ghost's instance `MwId` to `UIAll.SpectatorForcedTarget` (what
-  Nadeo's `UISequences::SetReplayGhostFocus` does), optionally with `ForceSpectator` and
-  `UISequence = EndRound`. Stopping restores the previous values and **restarts you and the
-  ghosts** (setting *Spectate → Restart when you stop spectating*): forcing the spectator makes
-  the engine play a spectator camera clip on the ghost (`CGameCtnMediaClipPlayer` on the game
-  terminal) that clearing the UI config never stops; only a (re)spawn of your car does. Ghosts++
-  does the same. With the setting off, Ghosts2 instead releases the terminal's spectator clip slot
-  itself (a ref-counted drop of `CGameTerminal+0xa8`, a few frames after the UI config restore has
-  reached the engine) and you carry on without a restart. With the Follow / FreeCam / Game cameras
-  the camera system's auto target id stays on the ghost even after a respawn, so stopping also
-  writes it back to the local vehicle ("Reset camera" on the Ghosts / Playback tabs does the same
-  by hand).
-- **Playback control** — per ghost (plugin-loaded instances in script modes, and the engine's own
-  medal/PB ghosts in the classic campaign race): pause/resume, speed (¼x … 4x), step ±100 ms, seek,
-  plus a Ghosts++-style scrubber strip at the bottom of the screen. Ghosts2 hooks the engine's
-  per-record clock update (`RaceGhostRecord_UpdatePlaybackTime`, `Dev::Hook`) and sets the record's
-  StartTime from the exact tick time, so a paused car is perfectly still and seeks land exactly;
-  "resync" hands the clock back to the game (the ghost snaps to the player's race time). A respawn
-  rebuilds the engine's records, which releases any owned clock. Setting `Time control` turns the
-  hook off.
-- **Auto re-add** (on by default) — the stock solo mode calls `RaceGhost_RemoveAll()` on every
-  phase transition, silently wiping plugin ghosts. Ghosts2 keeps the `CGameGhostScript@`
-  handles and puts them back, rate limited, giving up after a few failed attempts so it can
-  never end up in an add/remove fight with the mode script. The retained list is cleared on
-  map change. Removal detection queries each tracked instance (`RaceGhost_GetStartTime` /
-  `IsVisible`) — `RaceGhosts` is empty in script modes — and only treats an instance as
-  removed once it previously reported `startTime > 0` (a fresh add reports 0 until the
-  player starts).
+- **Load ghosts from anywhere** — your PB, the author / gold / silver / bronze medal ghosts, any
+  `.Replay.Gbx` / `.Ghost.Gbx` from a folder browser over your Replays folder, and any entry of the
+  map's world / zone **leaderboard** (paged, one click per record).
+- **Scrub every ghost like a video** — pause, step, seek on a time bar, speeds from ¼x to 4x, and a
+  resync that hands the clock back to the game. A paused car is perfectly still and seeks land on
+  the exact millisecond: Ghosts2 hooks the engine's per-record clock instead of restarting ghosts.
+- **Ghost lock** — one padlock drives every started ghost together and keeps them in sync, so a
+  whole leaderboard pack replays as one and late starters join at the group time.
+- **Spectate with the camera you want** — Replay (the engine's cinematic clip), Follow with
+  **Cam 1 / 2 / 3** (behind far, behind close, internal), the free-fly camera, or the game's own
+  spectator controls. Right-click the eye for a picker of every loaded ghost.
+- **Stop spectating cleanly** — either restart together with the ghosts (like Ghosts++), or carry on
+  from where you are: Ghosts2 knows how to end the engine's spectator camera clip without a respawn.
+- **Save** any loaded ghost back to a replay file, remove ghosts one by one or all at once, and keep
+  ghosts alive across the mode script's periodic `RaceGhost_RemoveAll` and plugin reloads.
+- **Scriptable** — exports for other plugins and a command pack for scripted control.
 
-## Exports and MP4 command pack
+| Follow camera, Cam 2 | Internal camera (Cam 3) |
+|---|---|
+| ![Follow camera, close](docs/img/follow-cam2.png) | ![Internal camera over the jump](docs/img/internal.png) |
 
-Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`,
-`RemoveAll`, `Spectate`, `StopSpectating`, `State`, `ShowWindow`, `GetGhostTime`, `Seek`,
-`SetPaused`, `SetSpeed`, `Resync` and `ShowScrubber` for other Openplanet scripts. The optional `ghosts2` pack (`mp4pack/`, plugin id `tm-ghosts2-mp4pack`,
-build with `mp4pack/build.sh`) exposes the same operations through
-`tm-mp4-control/tools/mp4call.py ghosts2.list` (subcommands: `state`, `load_replay`,
-`load_pb`, `load_medal`, `remove`, `remove_all`, `spectate`, `stop_spectating`,
-`show_window visible= [tab=ghosts|playback|load|state] [x= y=]`, `ghost_time instId=`, `seek instId= ms=`, `pause instId= paused=`,
-`speed instId= speed=`, `resync instId=`, `scrubber instId= visible=`). The pack must not re-declare the imports: Openplanet compiles a
-dependency's `exports` files into the dependent module.
+| Replay camera (engine clip) | Playback tab |
+|---|---|
+| ![Replay camera on the banked turn](docs/img/replay-cam.png) | ![Playback tab: mixed speeds, one paused, one spectated](docs/img/playback-tab.png) |
 
-## Build
+| Load tab: medals, leaderboard, replay files | Ghosts tab |
+|---|---|
+| ![Load tab with the world leaderboard](docs/img/load-tab.png) | ![Ghosts tab](docs/img/ghosts-tab.png) |
+
+## Using it
+
+Open the window from the Openplanet **Plugins › Ghosts2** menu. Four tabs:
+
+- **Load** — *Load my PB*, *Load author ghost* (Gold / Silver / Bronze), the leaderboard table
+  (*Fetch*, then **+** on a record), and the replay folder browser (**+** on a file).
+- **Playback** — one row per started ghost: spectate / scrubber / pause / speed / resync buttons,
+  the name, the ghost's time over its race time, and state icons (eye = spectated, clock = clock
+  owned by Ghosts2, padlock = in the lock group). The top row toggles the lock, pauses, resumes or
+  releases every started ghost at once, and resets the camera.
+- **Ghosts** — what the race holds and what Ghosts2 loaded, with per-row remove, re-add, spectate and
+  save, plus *Remove all* and the engine's own medal/PB ghost toggles.
+- **State** — the current playground, map and hook status.
+
+### Scrubber
+
+The strip at the bottom of the screen opens by itself for the first ghost you load and follows the
+Ghosts++ rules: visible during the race countdown, while you spectate and while you drag it; otherwise
+it hides 1.5 s after the mouse leaves it, and hovering the (invisible) strip area brings it back
+(settings *Scrubber → Show during the race countdown / Auto-hide / Hide delay*).
+
+Buttons: step back / play-pause / step forward (step scales with the speed), speed (click faster,
+right-click slower), resync, **eye** (spectate this ghost; right-click for a picker of every ghost;
+with the lock on it shows whichever ghost is spectated), **camera** (Replay / Follow / FreeCam / Game,
+right-click cycles backwards; in Follow a **Cam 1/2/3** button appears), and the **padlock**.
+Right-click on the time bar toggles pause.
+
+### Ghost lock
+
+On by default (*Scrubber → Lock all ghosts by default*). With the lock on, the scrubber, the Playback
+rows and the exports drive every started ghost: pause, seek, step and speed apply to all of them, and
+each frame the others mirror the scrubber ghost's clock.
+
+### Spectating
+
+The eye writes the ghost's instance id into the game's `SpectatorForcedTarget` and forces you into
+spectator mode (what Nadeo's own replay-focus UI does). The camera button picks the spectator camera:
+
+| Camera | What you get |
+|---|---|
+| **Replay** | the engine's cinematic camera clip |
+| **Follow** | chase cam on the ghost; **Cam 1** behind far, **Cam 2** behind close, **Cam 3** internal |
+| **FreeCam** | the free-fly camera (cam 7 in TM2020 terms), moved with the game's own free-cam keys |
+| **Game** | no override: the game's spectator camera controls apply |
+
+Stopping either **restarts you and the ghosts together** (setting *Spectate → Restart when you stop
+spectating*, on by default, same as Ghosts++) or, with that setting off, ends the spectator camera clip
+in place so you carry on without a restart. *Reset camera* on the Ghosts / Playback tabs points the
+camera back at your car if anything ever leaves it on a ghost.
+
+## Settings
+
+All under **Openplanet › Settings › Ghosts2**: replay folder, auto re-add, time control on/off,
+scrubber visibility and step size, lock default, spectate options (force spectator, restart on stop,
+respawn delay, camera type, Follow camera, classic-race camera hook), leaderboard zone.
+
+## Exports and command pack
+
+Ghosts2 exports `Ghosts2::ListGhosts`, `LoadReplay`, `LoadPB`, `LoadMedal`, `Remove`, `RemoveAll`,
+`Spectate`, `StopSpectating`, `StopSpectatingEx(respawn)`, `State`, `ShowWindow`, `SelectTab`,
+`MoveWindow`, `GetGhostTime`, `Seek`, `SetPaused`, `SetSpeed`, `Resync`, `ShowScrubber`, `SetLockAll`,
+`SetCameraType`, `SetFollowCam`, `ResetCamera` and the leaderboard calls for other Openplanet scripts
+(see `src/Exports.as`). The optional pack in `mp4pack/` (plugin id `tm-ghosts2-mp4pack`) exposes the same
+operations to the `tm-mp4-control` plugin as `ghosts2.*` commands
+(`list`, `state`, `load_replay`, `load_pb`, `load_medal`, `lb_fetch`, `lb_list`, `load_lb`, `remove`,
+`remove_all`, `spectate`, `stop_spectating [respawn=]`, `cam type=`, `follow_cam cam=`, `cam_reset`,
+`lock all=`, `ghost_time`, `seek`, `pause`, `speed`, `resync`, `scrubber`, `show_window`). The pack must
+not re-declare the imports: Openplanet compiles a dependency's `exports` files into the dependent module.
+
+## Building from source
 
 ```
 SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to ~/Openplanet4/Plugins
@@ -80,62 +120,47 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 ```
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
+`tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack.
 
-## Scrubber
+## How it works (engine notes)
 
-The strip at the bottom of the screen opens by itself for the first ghost you load and follows the Ghosts++
-rules: it is visible during the race countdown, while you spectate and while you drag it; otherwise it hides
-1.5 s after the mouse leaves it, and hovering the (invisible) strip area brings it back. Settings *Scrubber →
-Show during the race countdown / Auto-hide / Hide delay*. Right-click on the time bar toggles pause; the speed
-button's right-click cycles speeds backwards. With the lock on, the eye shows whichever ghost is being spectated
-and stops it; right-click the eye for a picker listing every loaded ghost. The camera button next to it cycles the
-spectator camera: **Replay** (the engine's camera clip), **Follow** (chase cam; a **Cam 1 / 2 / 3** button next to it picks behind-far / behind-close / internal, which the engine's forced Follow camera cannot do on its own), **FreeCam** (the free camera, cam 7 in TM2020 terms) and
-**Game** (`SpectatorForceCameraType = 15`: the game's own spectator camera controls apply). Pack:
-`ghosts2.cam type=0|1|2|15`. Names are rendered through `Text::OpenplanetFormatCodes`.
+- **Playback control** hooks the engine's per-record clock update (`RaceGhostRecord_UpdatePlaybackTime`,
+  `Dev::Hook`) and sets each record's StartTime from the exact tick time, so paused cars do not
+  vibrate and seeks land exactly. Resync hands the clock back; a respawn rebuilds the records, which
+  releases any owned clock. The setting *Time control* turns the hook off.
+- **Auto re-add** — the stock solo mode calls `RaceGhost_RemoveAll()` on every phase transition.
+  Ghosts2 keeps the `CGameGhostScript@` handles and puts them back, rate limited, giving up after a
+  few failed attempts so it never fights the mode script. `RaceGhost_Add` takes effect at the next
+  (re)spawn: the engine keeps a script-facing add list and a live copy rebuilt when the player spawns,
+  and Ghosts2 tracks (and, after a reload, adopts) ghosts from both.
+- **Stop spectating** — forcing the spectator makes the engine play a spectator camera clip on the
+  ghost (`CGameCtnMediaClipPlayer` on the game terminal) that clearing the UI config never stops; only
+  a (re)spawn does, or a ref-counted release of the terminal's clip slot a few frames after the UI
+  config restore has reached the engine (the no-restart mode). With the Follow / FreeCam / Game cameras
+  the camera system's auto target also stays on the ghost, so stopping writes it back to your car.
+- **Follow Cam 1/2/3** — the engine hard-codes the far chase cam for the forced Follow spectator
+  camera; Ghosts2 writes the chosen vehicle cam id into the camera system from its camera-target hook,
+  which runs right before the camera update reads it.
+- **Classic race camera hook** — in the campaign race (`CTrackManiaRace1P`) the engine never copies
+  `SpectatorForcedTarget` into the camera, so Ghosts2 hooks the camera target resolver and writes the
+  ghost's id into the forced-target slot right before it is read (setting *Camera hook (classic race)*).
+  All hooks are removed on unload.
 
-## Ghost lock
-
-The padlock on the scrubber (on by default, setting *Scrubber → Lock all ghosts by default*) locks every started
-ghost together: the scrubber, the per-ghost playback buttons and the exports/pack commands then pause, seek, step
-and change speed for all of them, and each frame the others mirror the scrubber ghost's clock, so they stay in sync
-and a ghost that starts later joins at the group time. Pack: `ghosts2.lock all=true|false`.
-
-## Leaderboard ghosts
-
-The Load tab fetches the map's leaderboard (zone from settings, default `World`, paged) and adds any record's ghost
-to the race. This is the game's own add-opponent flow: `ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid,
-"", zone, offset, count)` returns `CGameNaturalLeaderBoardInfoScript` entries with rank, name, score and a
-`FileName` + `ReplayUrl`; `DataFileMgr.Ghost_Download(FileName, ReplayUrl)` fetches the ghost, then
-`RaceGhost_Add`. Pack commands: `ghosts2.lb_fetch offset=`, `ghosts2.lb_list`, `ghosts2.load_lb rank=`.
-
-## Camera target hook (classic race)
-
-In the classic campaign race (`CTrackManiaRace1P`) the engine never copies `SpectatorForcedTarget` into the camera, so
-"Spectate" only made the player a spectator while the chase cam stayed on their car. Ghosts2 hooks the camera
-target resolver (`CGameCameraSystem`, RVA 0xb44740) and writes the spectated ghost's instance id into the camera's
-forced-target slot (+0x4c) right before it is read; the engine clears that slot every frame, so a plain write never
-survives. Setting: **Spectate → Camera hook (classic race)**. Both hooks are removed on unload.
+The research behind these lives in the `openplanet/research/mp4/` notes (Ghidra decompiles and runtime
+notes; engine build `2019-11-19_18_50`, Openplanet 1.29.14).
 
 ## Known limitations
 
-- **Playback control hooks engine build 2019-11-19_18_50** (`RaceGhostRecord_UpdatePlaybackTime` at
-  image offset 0x848f20; the prologue bytes are checked before hooking and the feature disables
-  itself on a mismatch). The script API itself only offers the forward-only `uint OffsetMs` of
+- **The hooks target engine build 2019-11-19_18_50.** Prologue bytes are checked before hooking and each
+  feature disables itself on a mismatch; the script API alone only offers the forward-only
   `RaceGhost_AddWithOffset`.
-- **Ghost identity is a heuristic.** `CGameCtnGhost.Id` is `0xffffffff` for engine-loaded
-  ghosts, so plugin ghosts are matched to `RaceGhosts` rows by stripped nickname + race time.
-  Two identical runs by the same name are matched 1:1 by count, but cannot be told apart.
-- **`DataFileMgr` is documented by Nadeo as "only available for local solo modes"**, so
-  replay loading and saving are expected to be unavailable online.
-- **Saving writes `.Replay.Gbx`, not `.Ghost.Gbx`.** MP4 has no `Ghost_Save`; only
-  `Replay_Save(Path, Map, Ghost)`. It is passed a bare filename, which the engine resolves
-  inside the Replays folder (that is how Nadeo's own save-ghost UI calls it).
-- Only ghosts loaded *by this plugin* can be removed individually, spectated or saved —
-  engine ghosts have no instance id and no `CGameGhostScript` handle we can reach.
-- **`RaceGhost_Add` takes effect at the next (re)spawn.** The engine keeps two add lists: the
-  script-facing one (`race+0x1d0`, where Add/Remove act) and the live copy (`race+0xdd0`, rebuilt
-  from it when the player spawns, together with the playback records). A ghost added mid-run has
-  no playback until you restart; Ghosts2 tracks (and, after a reload, adopts) ghosts from both lists.
+- **Ghost identity is a heuristic** for engine-loaded ghosts (`CGameCtnGhost.Id` is `0xffffffff`), so
+  they are matched by stripped nickname + race time.
+- **`DataFileMgr` is documented as "only available for local solo modes"**, so replay loading and saving
+  are expected to be unavailable online.
+- **Saving writes `.Replay.Gbx`** (MP4 has no `Ghost_Save`), under `Replays/Ghosts2/`.
+- Only ghosts loaded by Ghosts2 (or adopted from the race) can be removed individually, spectated or
+  saved; the engine's own medal/PB ghosts have no instance id.
 
 ## Notes for agents
 
@@ -152,8 +177,10 @@ Verified against `~/Openplanet4/Openplanet.h` + `Openplanet4.json` (engine build
 | `CTrackManiaRaceRules.RaceGhost_Remove` / `_RemoveAll` | `void (MwId)` / `void ()` |
 | `CGameDataFileManagerScript.Replay_Load` | `CWebServicesTaskResult_GhostListScript@ (wstring Path)`, `.Ghosts` is `MwFastBuffer<CGameGhostScript@>` |
 | `CGameDataFileManagerScript.Replay_Save` | `CWebServicesTaskResult@ (wstring Path, CGameCtnChallenge@ Map, CGameGhostScript@ Ghost)` |
+| `CGameDataFileManagerScript.Ghost_Download` | `CWebServicesTaskResult_GhostScript@ (string FileName, string Url)` — leaderboard entries carry both |
 | `CGameDataFileManagerScript.TaskResult_Release` | `void (MwId TaskId)` — also on `ScoreMgr` |
 | `CGameScoreAndLeaderBoardManagerScript.Map_GetRecordGhost` | `CWebServicesTaskResult_GhostScript@ (MwId UserId, string MapUid, string Context)`, `.Ghost` |
+| `CGameScoreAndLeaderBoardManagerScript.MapLeaderBoard_GetPlayerList` | `(MwId(0), mapUid, "", zone, offset, count)` → `CGameNaturalLeaderBoardInfoScript` entries |
 | `CWebServicesTaskResult` | `Id`, `IsProcessing`, `HasSucceeded`, `HasFailed`, `IsCanceled`, `ErrorType/Code/Description` |
 | `CGamePlaygroundUIConfig` | `SpectatorForcedTarget`, `SpectatorAutoTarget`, `ForceSpectator`, `SpectatorForceCameraType`, `UISequence` (all writable) |
 | `CGameGhostScript` | only `Id`, `Result` (`CTmRaceResultNod`, `.Time` is `int`), `Nickname` |
@@ -164,33 +191,29 @@ Verified against `~/Openplanet4/Openplanet.h` + `Openplanet4.json` (engine build
 **Does not exist in MP4** (present in TM2020 / Ghosts++, do not port):
 
 - `NGameGhostClips_SMgr`, `CGameGhostMgrScript` — no ghost-clip manager at all.
-- `CGamePlaygroundUIConfig.Spectator_SetForcedTarget_Ghost` — write the plain
-  `SpectatorForcedTarget` field instead.
-- `CSmArenaRulesMode.Ghosts_SetStartTime` — no start-time setter; remove and re-add with an
-  offset.
+- `CGamePlaygroundUIConfig.Spectator_SetForcedTarget_Ghost` — write the plain `SpectatorForcedTarget` field instead.
+- `CSmArenaRulesMode.Ghosts_SetStartTime` — no start-time setter (Ghosts2 hooks the clock instead).
 - `DataFileMgr.Ghost_Save` — only `Replay_Save`.
-- `CGamePlaygroundScript.ModeName` — there is no mode-name string. Detect the mode by
-  `app.PlaygroundScript` being a `CTrackManiaRaceRules`; `ServerModeName` is empty offline.
-- MLHook and any `SendCustomEvent` event bus — the solo mode chain has none; drive
-  `CTrackManiaRaceRules` methods directly.
+- `CGamePlaygroundScript.ModeName` — detect the mode by `app.PlaygroundScript` being a `CTrackManiaRaceRules`.
+- MLHook and any `SendCustomEvent` event bus — drive `CTrackManiaRaceRules` methods directly.
 
-**Verified in-game (2026-09-07, TimeAttack on A01):**
+**Verified in-game (TimeAttack on A01, and the classic campaign race):**
 
-1. `LocalUserId()` (`rules.Users[i].Id` matched by `GetLocalLogin()`) is the id
-   `Map_GetRecordGhost` wants: `Load my PB` returns the local record ghost.
-2. `SpectatorForcedTarget` written from Openplanet sticks; the camera follows the ghost until
-   `Stop spectating` restores the saved values.
+1. `LocalUserId()` (`rules.Users[i].Id` matched by `GetLocalLogin()`) is the id `Map_GetRecordGhost` wants.
+2. `SpectatorForcedTarget` written from Openplanet sticks; the camera follows the ghost until the values are restored.
 3. In script modes `RaceGhosts` stays empty, so plugin ghosts are tracked per instance with
-   `RaceGhost_GetStartTime` / `IsVisible`; the nickname+time match is only used for the
-   classic race list.
-4. `Replay_Save` accepts a bare filename and writes under the game's `Replays` folder
-   (`Replays/Ghosts2/<name>.Replay.Gbx`); `Replay_Load` reads it back.
-5. Releasing a task result while holding its `CGameGhostScript@` keeps the ghost usable
-   (medal/PB ghosts are added after `TaskResult_Release`).
+   `RaceGhost_GetStartTime` / `IsVisible`; the nickname+time match is only used for the classic race list.
+4. `Replay_Save` accepts a bare filename and writes under the game's `Replays` folder; `Replay_Load` reads it back.
+5. Releasing a task result while holding its `CGameGhostScript@` keeps the ghost usable.
 
 ## Credits
 
-- **FortTM**: the leaderboard ghost flow (`MapLeaderBoard_GetPlayerList` argument convention with `MwId(0)`, an empty
-  context and a zone name; the `FileName`/`ReplayUrl` on each leaderboard entry; `Ghost_Download` taking them
-  directly), traced from what the game does when adding an opponent from the leaderboard dialog.
-- Ghosts++ (TM2020) for the feature set and UI this plugin imitates.
+- [Ghosts++](https://openplanet.dev/plugin/ghostspp) (TM2020) for the feature set and UI this plugin imitates.
+- **FortTM** for the leaderboard ghost flow (`MapLeaderBoard_GetPlayerList` with `MwId(0)`, an empty context
+  and a zone name; `FileName`/`ReplayUrl` on each entry; `Ghost_Download` taking them directly).
+- Created by [Max Kaye (XertroV)](https://xk.io) + AI.
+
+## License
+
+Dual-licensed under the [Unlicense](https://unlicense.org) and
+[CC0 1.0](https://creativecommons.org/publicdomain/zero/1.0/), at your option. See `LICENSE`.
