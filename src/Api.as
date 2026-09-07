@@ -65,6 +65,14 @@ uint64 NodPointer(CMwNod@ nod) {
     return ptr;
 }
 
+// True while the game's own in-game menu (Escape) is open.
+bool InGameMenuOpen() {
+    auto app = App();
+    if (app is null || app.Network is null) return false;
+    auto pcs = app.Network.PlaygroundClientScriptAPI;
+    return pcs !is null && pcs.IsInGameMenuDisplayed;
+}
+
 string TypeName(CMwNod@ nod) {
     if (nod is null) return "null";
     auto ty = Reflection::TypeOf(nod);

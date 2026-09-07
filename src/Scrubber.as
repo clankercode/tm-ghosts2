@@ -34,6 +34,7 @@ float NextSpeed(float speed) {
 
 void DrawScrubberWindow() {
     if (!Scrubber_GhostAlive()) { @g_scrubGhost = null; return; }
+    if (InGameMenuOpen()) return;
     auto pg = g_scrubGhost;
     bool avail = TimeCtl_Available();
     int t = TimeCtl_GhostTime(pg);
@@ -49,14 +50,15 @@ void DrawScrubberWindow() {
 
     UI::BeginDisabled(!avail || t < 0);
     vec2 btn = vec2(34, 0);
-    if (UI::Button(Icons::StepBackward + "##sb", btn)) TimeCtl_Seek(pg, uint(Math::Max(0, t - 100)));
-    if (UI::IsItemHovered()) UI::SetTooltip("Back 100 ms");
+    int step = int(S_ScrubStepMs);
+    if (UI::Button(Icons::StepBackward + "##sb", btn)) TimeCtl_Seek(pg, uint(Math::Max(0, t - step)));
+    if (UI::IsItemHovered()) UI::SetTooltip("Back " + step + " ms");
     UI::SameLine();
     if (UI::Button((pg.paused ? Icons::Play : Icons::Pause) + "##pp", btn)) TimeCtl_SetPaused(pg, !pg.paused);
     if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
     UI::SameLine();
-    if (UI::Button(Icons::StepForward + "##sf", btn)) TimeCtl_Seek(pg, uint(t + 100));
-    if (UI::IsItemHovered()) UI::SetTooltip("Forward 100 ms");
+    if (UI::Button(Icons::StepForward + "##sf", btn)) TimeCtl_Seek(pg, uint(t + step));
+    if (UI::IsItemHovered()) UI::SetTooltip("Forward " + step + " ms");
     UI::SameLine();
     if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) TimeCtl_SetSpeed(pg, NextSpeed(pg.speed));
     if (UI::IsItemHovered()) UI::SetTooltip("Playback speed (click to cycle)");
