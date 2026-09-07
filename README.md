@@ -5,6 +5,10 @@ spectates race ghosts. It is a small clone of the TM2020 plugin
 [Ghosts++](../tm-ghosts-plus-plus), rebuilt on the MP4 API (`CTrackManiaRaceRules.RaceGhost_*`)
 rather than the TM2020 ghost-clip manager.
 
+![Playback tab](docs/img/playback-tab.png) ![Ghosts tab](docs/img/ghosts-tab.png)
+
+![Spectating a ghost with the scrubber](docs/img/spectate.png)
+
 ## What it does
 
 - **Ghosts tab**
