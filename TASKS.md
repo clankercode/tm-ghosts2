@@ -10,7 +10,7 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 - [x] Spectate a ghost via `UIAll.SpectatorForcedTarget` (+ restore) — verified in-game via tm-mp4-control `spectate`
 - [x] Auto re-add after the mode's `RaceGhost_RemoveAll` — detection fixed: per-instance `RaceGhost_GetStartTime/IsVisible` queries; only "removed" after the instance previously reported startTime>0 (grok helper)
 - [ ] Classic campaign race (`CTrackManiaRace1P`): script API is inactive there; needs engine-level add/remove (Ghidra)
-- [~] Ghost time control (pause / seek / speed) — mechanism found 2026-09-07: script-mode record at `race+0xde0[i]` (`+0x28` instId), `+0x10` StartTime is the only input (nothing rewrites it per frame; ghost time = now − StartTime); seek = write once, pause/speed = write `now − held` every frame (verified with `poke`). Next: implement in Ghosts2 (Dev::Write), re-apply after mode re-adds
+- [x] Ghost time control (pause / seek / speed) — done 2026-09-07 for script modes: Ghosts2 writes the add entry's OffsetMs (`CTrackManiaRaceNew+0xdd0[i]+0x10`, re-read every frame by `CTrackManiaRaceNew_UpdateFrame`; the record's StartTime is rewritten every frame while the player races, so it is not a lever). Verified via pack: pause holds ±2 ms, seek lands within 1 frame, 2x/0.25x rates measured 2055/258 ms per s, works driving and spectating. Exports `GetGhostTime/Seek/SetPaused/SetSpeed`, pack cmds `ghost_time/seek/pause/speed`, Playback UI row
 - [ ] Ghost offset (forward seek) via remove + `RaceGhost_AddWithOffset(ghost, ms)` + `SpawnPlayer` (verified: offset = seek into the replay, same startTime) — cheap partial scrubber for script modes
 - [ ] Spectate camera choice: `SpectatorForceCameraType` 0 close chase, 1 behind car, 2/3 track cam (verified)
 - [x] Save ghost: `DataFileMgr.Replay_Save("Ghosts2/x.Replay.Gbx", RootMap, ghostScript)` verified in-game (writes under Replays/); no `Ghost_Save` in MP4
@@ -22,7 +22,8 @@ Legend: [ ] todo · [~] in progress · [x] done · (who) owner. "pfi" items get 
 - [x] tm-mp4-control: socket control plugin (menus, click, titles, play_map, campaigns, race, ghosts, mem, findu32(deep), race_ghost_add/remove/query, spectate)
 - [x] tools: mp4call.py, memdump.py, structdump.py, typedb.py, mp-restart/screenshot/log/set-devmode, mp-play-campaign-map.sh
 - [x] Ghidra: analysis done on x-alpha (upstream 12.1.3, ~/re/mp4u), GhidraMCP tunnelled to :18743, `research/mp4/tools/ghidra-mp4.sh`, `ghidra-mp4-progress.sh`, `ghidra_api.sh`; RaceGhost_* + Physics_Step named (see research/mp4/Ghidra.md)
-- [~] Ghidra: RaceGhost_Add thunk, Remove/RemoveAll internals, per-frame ghost-time writer (`0x140848f83` area) — opus subagent 2026-09-07
+- [x] Ghidra: RaceGhost_Add (0x140efe470), Remove/RemoveAll internals, record allocator, per-frame writer `RaceGhostRecord_UpdatePlaybackTime` (0x140848f20) + `CTrackManiaRaceNew_UpdateFrame` (0x140ebad00) — opus subagent 2026-09-07, research commit 4f53cf9
+- [~] Classic race (`CTrackManiaRace1P`) ghost records — static Ghidra assignment sent to grok helper 2026-09-07
 - [x] tools: `mp-gdb-watch.sh` (hardware watchpoints on the live game), `memscan.py`/`memdiff.py`/`rawscan.py`, `poke`
 - [x] tm-mp4-control: pack registry (`Packs.as`) + shared funcdef (grok helper)
 - [x] Log LSP gaps: void `UI::BeginTabBar` in `if`; duplicate imports vs injected dependency `exports` (both logged 2026-09-07)
