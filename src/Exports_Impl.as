@@ -76,6 +76,8 @@ namespace Ghosts2 {
 
     bool LoadLeaderboard(uint rank) { return Lb_Load(rank); }
 
+    void SetLockAll(bool on) { Lock_Set(on); }
+
     bool Remove(uint instId) {
         for (uint i = 0; i < g_ghosts.Length; i++) {
             if (g_ghosts[i].instId == instId) {
@@ -114,6 +116,7 @@ namespace Ghosts2 {
         }
         o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
+        o["lockAll"] = S_ScrubLockAll;
         o["camHook"] = g_camHook !is null;
         o["camForcedId"] = g_camForcedId;
         o["camHookWrites"] = g_camHookWrites;

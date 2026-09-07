@@ -28,6 +28,9 @@ bool S_TimeControl = true;
 [Setting category="Time control" name="Scrubber step (ms)" min=10 max=5000 description="Step size of the scrubber's back/forward buttons at 1x speed; scales with playback speed (min 1 ms)."]
 uint S_ScrubStepMs = 100;
 
+[Setting hidden]
+bool S_ScrubLockAll = false;
+
 [Setting category="Spectate" name="Set ForceSpectator" description="Puts the local player into spectator so the forced target is actually followed."]
 bool S_SpectateForceSpectator = true;
 

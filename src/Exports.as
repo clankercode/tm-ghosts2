@@ -8,6 +8,7 @@ namespace Ghosts2 {
     import bool LeaderboardFetch(uint offset) from "Ghosts2";
     import Json::Value@ Leaderboard() from "Ghosts2";
     import bool LoadLeaderboard(uint rank) from "Ghosts2";
+    import void SetLockAll(bool on) from "Ghosts2";
     import bool Remove(uint instId) from "Ghosts2";
     import void RemoveAll() from "Ghosts2";
     import bool Spectate(uint instId) from "Ghosts2";

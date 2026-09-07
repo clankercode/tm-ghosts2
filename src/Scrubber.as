@@ -18,7 +18,7 @@ void Scrubber_EndDrag() {
     if (!g_scrubDragging) return;
     g_scrubDragging = false;
     g_scrubDragValue = -1;
-    if (g_scrubGhost !is null && !g_scrubWasPaused) TimeCtl_SetPaused(g_scrubGhost, false);
+    if (g_scrubGhost !is null && !g_scrubWasPaused) Ctl_SetPaused(g_scrubGhost, false);
 }
 
 // Drop the scrubber if its ghost disappeared from our lists.
@@ -75,23 +75,23 @@ void DrawScrubberWindow() {
     vec2 btn = vec2(34, 0);
     // Step scales with playback speed: ¼x → 25 ms, 1x → 100 ms, 2x → 200 ms; min 1 ms.
     int step = Math::Max(1, int(float(S_ScrubStepMs) * pg.speed + 0.5f));
-    if (UI::Button(Icons::StepBackward + "##sb", btn)) TimeCtl_Seek(pg, uint(Math::Max(0, t - step)));
+    if (UI::Button(Icons::StepBackward + "##sb", btn)) Ctl_Seek(pg, uint(Math::Max(0, t - step)));
     if (UI::IsItemHovered()) UI::SetTooltip("Back " + step + " ms");
     UI::SameLine();
-    if (UI::Button((pg.paused ? Icons::Play : Icons::Pause) + "##pp", btn)) TimeCtl_SetPaused(pg, !pg.paused);
+    if (UI::Button((pg.paused ? Icons::Play : Icons::Pause) + "##pp", btn)) Ctl_SetPaused(pg, !pg.paused);
     if (UI::IsItemHovered()) UI::SetTooltip(pg.paused ? "Resume" : "Pause");
     UI::SameLine();
-    if (UI::Button(Icons::StepForward + "##sf", btn)) TimeCtl_Seek(pg, uint(t + step));
+    if (UI::Button(Icons::StepForward + "##sf", btn)) Ctl_Seek(pg, uint(t + step));
     if (UI::IsItemHovered()) UI::SetTooltip("Forward " + step + " ms");
     UI::SameLine();
-    if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) TimeCtl_SetSpeed(pg, NextSpeed(pg.speed));
+    if (UI::Button(SpeedLabel(pg.speed) + "##spd", vec2(46, 0))) Ctl_SetSpeed(pg, NextSpeed(pg.speed));
     if (UI::IsItemHovered()) {
         UI::SetTooltip("Playback speed (click = faster, right click = slower)");
-        if (UI::IsMouseClicked(UI::MouseButton::Right)) TimeCtl_SetSpeed(pg, PrevSpeed(pg.speed));
+        if (UI::IsMouseClicked(UI::MouseButton::Right)) Ctl_SetSpeed(pg, PrevSpeed(pg.speed));
     }
     UI::SameLine();
     UI::BeginDisabled(!pg.Controlled());
-    if (UI::Button(Icons::Undo + "##sync", btn)) TimeCtl_Release(pg);
+    if (UI::Button(Icons::Undo + "##sync", btn)) Ctl_Release(pg);
     if (UI::IsItemHovered()) UI::SetTooltip("Give the clock back to the game (ghost snaps to the player's race time)");
     UI::EndDisabled();
     UI::EndDisabled();
@@ -102,8 +102,13 @@ void DrawScrubberWindow() {
     }
     if (UI::IsItemHovered()) UI::SetTooltip(isSpec ? "Stop spectating" : "Spectate this ghost");
     UI::SameLine();
+    bool locked = Lock_Enabled();
+    uint nMembers = locked ? Lock_Members().Length : 0;
+    if (UI::Button((locked ? "\\$8f8" + Icons::Lock : Icons::Unlock) + "##lock", btn)) Lock_Set(!locked);
+    if (UI::IsItemHovered()) UI::SetTooltip(locked ? "Unlock: control ghosts individually again" : "Lock all ghosts: this scrubber drives every ghost and keeps them in sync");
+    UI::SameLine();
     UI::AlignTextToFramePadding();
-    UI::Text(pg.nickname + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
+    UI::Text(pg.nickname + (locked ? "  \\$8f8" + Icons::Lock + " " + nMembers : "") + "  \\$888" + (t < 0 ? "not started" : FormatTime(uint(t))) + " / " + FormatTime(pg.raceTime));
     if (t < 0) {
         UI::SameLine();
         if (CurrentRules() !is null) {
@@ -127,12 +132,12 @@ void DrawScrubberWindow() {
         if (!g_scrubDragging) {
             g_scrubDragging = true;
             g_scrubWasPaused = pg.paused;
-            TimeCtl_SetPaused(pg, true);
+            Ctl_SetPaused(pg, true);
         }
         int target = int(Math::Max(0.0f, v));
         if (target != g_scrubDragValue) {
             g_scrubDragValue = target;
-            TimeCtl_Seek(pg, uint(target));
+            Ctl_Seek(pg, uint(target));
         }
     } else if (g_scrubDragging) {
         Scrubber_EndDrag();
@@ -143,7 +148,7 @@ void DrawScrubberWindow() {
         vec2 m = UI::GetMousePos();
         vec2 p0 = UI::GetWindowPos();
         vec2 sz = UI::GetWindowSize();
-        if (m.x >= p0.x && m.y >= p0.y && m.x <= p0.x + sz.x && m.y <= p0.y + sz.y) TimeCtl_SetPaused(pg, !pg.paused);
+        if (m.x >= p0.x && m.y >= p0.y && m.x <= p0.x + sz.x && m.y <= p0.y + sz.y) Ctl_SetPaused(pg, !pg.paused);
     }
     UI::End();
 }

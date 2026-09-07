@@ -64,6 +64,12 @@ SKIP_RELOAD=1 ./build.sh dev     # lint (openplanet-lsp, MP4 type db) + stage to
 
 `build.sh` runs `openplanet-lsp check --game-target MP4` first and refuses to stage on errors.
 
+## Ghost lock
+
+The padlock on the scrubber locks every started ghost together: the scrubber (and the per-ghost playback buttons)
+then pause, seek, step and change speed for all of them, and each frame the others mirror the scrubber ghost's
+clock, so they stay in sync and a ghost that starts later joins at the group time. Pack: `ghosts2.lock all=true|false`.
+
 ## Leaderboard ghosts
 
 The Load tab fetches the map's leaderboard (zone from settings, default `World`, paged) and adds any record's ghost

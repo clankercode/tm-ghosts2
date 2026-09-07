@@ -293,5 +293,6 @@ void TimeCtl_Update(float dt) {
     if (g_clockHook is null) return;
     if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts);
     if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts);
+    Lock_Update();
     if (g_clock.Length > 0) TimeCtl_CollectOrphans();
 }
