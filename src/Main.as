@@ -31,12 +31,12 @@ void RenderInterface() {
     UI::SetNextWindowSize(640, 420, UI::Cond::FirstUseEver);
     UI::SetNextWindowPos(int(Display::GetWidth() - 660), 40, UI::Cond::FirstUseEver);
     if (UI::Begin(MenuTitle, S_ShowWindow)) {
-        if (UI::BeginTabBar("g2-tabs")) {
-            if (UI::BeginTabItem("Ghosts")) { DrawGhostsTab(); UI::EndTabItem(); }
-            if (UI::BeginTabItem("Load")) { DrawLoadTab(); UI::EndTabItem(); }
-            if (UI::BeginTabItem("State")) { DrawStateTab(); UI::EndTabItem(); }
-            UI::EndTabBar();
-        }
+        // MP4 Openplanet: UI::BeginTabBar returns void (not bool as in TM2020)
+        UI::BeginTabBar("g2-tabs");
+        if (UI::BeginTabItem("Ghosts")) { DrawGhostsTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("Load")) { DrawLoadTab(); UI::EndTabItem(); }
+        if (UI::BeginTabItem("State")) { DrawStateTab(); UI::EndTabItem(); }
+        UI::EndTabBar();
     }
     UI::End();
 }
