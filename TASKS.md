@@ -156,9 +156,33 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
       and aim the write one tick ahead. Rendered spread 106 ms → 56–62 ms at ~17 fps
 - [x] `holdErr` / `holdErrMin` / `holdErrMax` / `tickEst` exported per owned clock, so the error is
       measurable rather than self-confirming
-- [ ] Optional: grok located the `rec+0x14` writer at `0x00910C40` (`TickPlayback 0x009116F0`). An MP4-style
-      hook there would remove the remaining tick-length jitter entirely. Not needed for the current fix, and
-      not worth a speculative hook — revisit only if the residual is ever visible at a normal frame rate
+- [x] The residual *was* visible: Max reported "pausing still stutters" against 0.7.0. Turbo ticks ghosts at
+      about 30 Hz, so predicting the next tick from `Update()` left a rolling hold error of −9…+16 ms (~0.6 m
+      of wobble). Fixed by hooking `TickPlayback` (`0x009116F0`) at the `MOV EDX,0xF4240` five bytes in
+      (`0x009116FD`, RVA `0x5116fd`), where ECX is still the record and EAX still `nowMs` — five bytes, no
+      relative operand, padding 0. Inside the tick `StartTime = nowMs − wanted` is exact, so the prediction is
+      gone. Measured paused at 9000 over a rolling 600-tick window: `holdErr` 0, min 0, max 0. Playback and
+      speed re-checked (1x/2x/0.5x = 3110/6200/1550 ms per 3 s); locked ghosts sit at spread 0. The prologue
+      is byte-checked before patching and a mismatch falls back to the `Update()` path
+
+## Turbo ghosts missing from the list (fixed, 2026-09-08)
+
+- [x] Root cause (user report: "shows my ghost but not the bronze ghost that is also loaded"): two stacked
+      faults meant *no* ghost Ghosts2 had not added itself could ever be adopted on Turbo. (a) The add entry's
+      ghost handle is at `O_Entry_Ghost` = `+4` on Turbo (32-bit pointer behind a sentinel word) and `+0` on
+      MP4 — the constant existed but adoption read a full 64 bits from a fixed `+0`. (b) `LooksLikeNod`
+      returned `false` unconditionally on Turbo, so even a correct pointer resolved to nothing and the ghost
+      was dropped as "no finished time and no script handle"
+- [x] The 32-bit nod signature is now measured, not guessed: the first vtable slot is one shared function for
+      every `CMwNod` subclass, at image offset `0x55ce50` on Turbo (`0x141dc0` on MP4). Agreed across App, the
+      race, the rules, the map, `DataMgr` and three `CGameCtnGhost`s — and across the unknown add-list
+      pointers, which is how we know they were real nods all along
+- [x] Side effect cured: because adoption always failed, every plugin reload added a *fresh* copy of your PB
+      instead of adopting the one already in the race. Seven had stacked up in one session. A reload now logs
+      `adopted race ghost` and auto-load skips
+- [x] `Ghosts2::RaceEntries()` / `Ghosts2::NodProbe()` (pack: `ghosts2.race_entries`, `ghosts2.nod_probe`)
+      dump the add lists and re-measure the vtable signature — the failure was invisible from script, and the
+      offset will move when the game is patched
 
 ## Player feedback (Juesto, against 0.2.0)
 

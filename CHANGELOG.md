@@ -2,6 +2,45 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.7.1 - "Bronze, Actually"
+
+Three bug reports against 0.7.0, all from Turbo, all fixed - and one of them had been quietly eating ghosts
+since the port began.
+
+- 2026-09-08: **Turbo ghosts the mode added were being dropped on the floor.** Reported as "shows my ghost but
+  not the bronze ghost that is also loaded (visible in map)", and it was in fact *every* ghost Ghosts2 had not
+  added itself. Two faults stacked: the add entry's ghost handle sits at `O_Entry_Ghost` = `+4` on Turbo (a
+  32-bit pointer behind a sentinel word) and `+0` on ManiaPlanet - the constant existed but adoption read a
+  full 64 bits from a fixed `+0` - and underneath that `LooksLikeNod` returned `false` unconditionally on
+  Turbo, so even a correct pointer resolved to nothing and the ghost fell out as "no finished time and no
+  script handle". That second one was the right call while the 32-bit vtable signature was unmeasured; it is
+  measured now, at image offset `0x55ce50`, agreeing across App, the race, the rules, the map, `DataMgr` and
+  three `CGameCtnGhost`s - and across the unknown add-list pointers, which is how we know they had been real
+  nods all along.
+- 2026-09-08: **A duplicate pile nobody had traced, cured by the same fix.** Because adoption always failed,
+  every plugin reload added a *fresh* copy of your PB instead of adopting the one already in the race; seven
+  had stacked up in one session, invisible because they sat exactly on top of each other. A reload now logs
+  `adopted race ghost` and auto-load correctly skips.
+- 2026-09-08: **Pausing a Turbo ghost still stuttered, and this time the fix is inside the engine's tick.**
+  0.7.0 removed the clock skew but kept the prediction: writing `StartTime` from `Update()` means guessing the
+  engine's next tick, and Turbo ticks ghosts at about 30 Hz, so the rolling hold error sat at -9..+16 ms
+  (~0.6 m of wobble). Hooking `TickPlayback` (`0x009116F0`) at the `MOV EDX,0xF4240` five bytes in leaves both
+  the record (ECX) and `nowMs` (EAX) in registers, with no relative operand to relocate, and there
+  `StartTime = nowMs - wanted` is exact rather than estimated. Measured paused at 9000 over a rolling
+  600-tick window: hold error 0, min 0, max 0. Speed re-checked at 1x/2x/0.5x (3110/6200/1550 ms per 3 s);
+  locked ghosts sit at spread 0. The prologue is byte-checked and a mismatch falls back to the `Update()`
+  path, so the hook is an upgrade rather than a requirement.
+- 2026-09-08: **The scrubber follows the ghost you spectate.** You could watch one ghost while the strip on
+  screen drove another, or nothing at all. Spectating and scrubbing are the same intent, so starting a
+  spectate now points the scrubber at that ghost - and makes it the lock leader, so a seek moves what you can
+  actually see. Reported on Turbo; the path is shared, so both games get it.
+- 2026-09-08: **Two diagnostics, because both root causes were invisible from script.** `ghosts2.race_entries`
+  dumps the race's ghost add lists with what each entry resolves to and why; `ghosts2.nod_probe` re-measures
+  the nod vtable signature against known-good nods, which is what you will need when a game patch moves it.
+  `ghosts2.state` also reports `baseAddress`, `scrubberInstId` and (on Turbo) `turboHookTicks`.
+
+Smoke 23/23 on both games.
+
 ## 0.7.0 - "The Engine Keeps Its Own Time"
 
 Trackmania Turbo stops stuttering, and the perf numbers Max measured from the outside turned out to be ours.

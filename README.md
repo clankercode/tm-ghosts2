@@ -239,24 +239,40 @@ What works on Turbo, all measured live on campaign map 003:
   **Map records** rather than pretending there is a world leaderboard.
 - **Adding ghosts, and the restart that starts them** — `RaceGhost_Add` plus a `SpawnPlayer`, exactly as
   on ManiaPlanet 4.
-- **Playback control**, without a hook, by borrowing the engine's own clock. The obvious implementation —
-  hold `record + 0x0c = rules.Now - wanted` from our `Update()` — is what made 0.6.0 stutter: `rules.Now` is
-  not the clock the engine renders ghosts against. Measured on campaign 003 over 90 samples,
-  `EngineNow - RaceNow` ran −88…−39 ms, and a ghost held at 8000 ms rendered 8017–8123 — 106 ms of playback
-  wander, about a metre of position wobble at racing speed, and worst exactly where you notice it: paused and
-  while scrubbing.
+- **Playback control**, held from inside the engine's own playback tick. This took three attempts and the
+  first two are worth recording, because each looked right from the inside.
 
-  The engine hands its clock back if you ask properly. It wrote `elapsed = EngineNow - StartTime` at its last
-  tick and `StartTime` is a value we put there, so `EngineNow = writtenStart + elapsed` recovers it exactly,
-  in its own phase, with no second clock involved. `wanted` is integrated with the engine's tick delta (so
-  playback speed is exact too) and the write aims one tick ahead, because the next tick is what consumes it.
-  What is left is tick-length jitter rather than clock skew: rendered spread fell from 106 ms to 56–62 ms at
-  the ~17 fps the comparison was run at, and tightens as the frame rate rises.
+  0.6.0 held `record + 0x0c = rules.Now - wanted` from our `Update()`. `rules.Now` is not the clock the engine
+  renders ghosts against: measured on campaign 003 over 90 samples, `EngineNow - RaceNow` ran −88…−39 ms and a
+  ghost held at 8000 ms rendered 8017–8123 — 106 ms of wander, about a metre of position wobble.
+
+  0.7.0 recovered the engine's own clock instead. It wrote `elapsed = EngineNow - StartTime` at its last tick
+  and `StartTime` is a value we put there, so `EngineNow = writtenStart + elapsed` gets it back exactly. That
+  removed the skew but not the jitter, because writing from `Update()` still means *predicting* the engine's
+  next tick and Turbo ticks ghosts at about 30 Hz. The rolling hold error was −9…+16 ms — small, and still
+  visible as a shudder on a paused ghost.
+
+  0.7.1 stops predicting. `TickPlayback` (`0x009116F0`) receives the record in ECX and `nowMs` on the stack;
+  five bytes in, at the `MOV EDX,0xF4240` that begins the ms→ns conversion, both values are still in registers
+  and the instruction has no relative operand, so it relocates with no padding. Inside the tick
+  `StartTime = nowMs - wanted` is not an estimate — `nowMs` is the value the engine is about to use. Measured
+  paused at 9000 over a rolling 600-tick window: hold error 0, min 0, max 0. Playback and speed track too
+  (1x/2x/0.5x measured 3110/6200/1550 ms per 3 s), and locked ghosts sit at spread 0. The prologue is
+  byte-checked before patching; a mismatch falls back to the `Update()` path rather than refusing to run.
 
   The 0.5.0 note claiming this was "measured exact" was self-confirming — Ghosts2 reports an owned ghost's
   time as the value it is *asking* for, so the old measurement compared our intention against itself.
   `ghosts2.list` now also reports `engineGhostTime` and `holdError`, and `ghosts2.state` reports
   `holdErr`/`holdErrMin`/`holdErrMax`/`tickEst` per owned clock, so the real error stays visible.
+- **Adopting ghosts the mode added.** Through 0.7.0, no ghost Ghosts2 had not added itself ever appeared in
+  the list on Turbo — a bronze medal ghost could be driving on track and simply not be there. Two faults were
+  stacked: the add entry's ghost handle is at `+4` on Turbo (a 32-bit pointer behind a sentinel word) and `+0`
+  on ManiaPlanet, and adoption read a fixed `+0`; and underneath that, the nod sanity check refused every raw
+  pointer on Turbo because the 32-bit vtable signature had never been measured, so even a correct pointer
+  resolved to nothing. It is measured now: the first vtable slot is one shared function for every `CMwNod`
+  subclass, at image offset `0x55ce50`, agreeing across App, the race, the rules, the map, `DataMgr` and three
+  `CGameCtnGhost`s. This also cured a duplicate pile — because adoption always failed, every plugin reload
+  added a *fresh* copy of your PB instead of adopting the one already in the race.
 - **The lock, the scrubber, removal, re-add and the save path** (Turbo has no replay-file writer, so
   saving goes through `DataMgr.StoreRecordName` — which writes into the map's own record table as *your*
   record, so Ghosts2 asks for confirmation first).
