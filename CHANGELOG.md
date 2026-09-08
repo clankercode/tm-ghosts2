@@ -2,6 +2,45 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.6.0 - "Bring Your Own Ghost"
+
+Everything here comes from a player's report against 0.2.0 (thanks, Juesto) - four of the five things they
+hit were still real on 0.5.1.
+
+- 2026-09-08: **Your own ghost is on the track when you get there.** Setting *Loading -> Load my PB when I
+  enter a map* (on by default) loads your personal best once per map, which is what Ghosts++ does and what
+  made Ghosts2 look inert until you found the Load tab. It skips itself when your ghost is already in the
+  race (the campaign challenge card's PERSONAL RECORD loads it too, and adding on top of that would give you
+  two of you), and in the legacy solo playground, which refuses added ghosts anyway. It never notifies and
+  never warns: something that happens by itself on every map must not interrupt, and "this map has no
+  personal best yet" is unremarkable rather than an error. This also answers "it doesn't survive restarts" -
+  the retained list is still dropped on a map change (those ghosts belong to the map you loaded them for),
+  but your own ghost now comes back by itself when you return.
+- 2026-09-08: **A replay from another map is refused instead of silently driving through the scenery.** The
+  `CGameGhostScript` that `Replay_Load` returns carries no map identity at all - only a nickname, a time and
+  checkpoints - so there was nothing to check against. The game's own replay index has it:
+  `CGameCtnApp.ReplayRecordInfos` holds a row per catalogued replay with its `MapUid`, and its `FileName` is
+  relative to the Replays folder, so it matches as a suffix of the absolute path the browser uses. A file the
+  index has never seen still loads: Ghosts2 only refuses a map it can positively identify as the wrong one.
+  *Loading -> Allow ghosts from other maps* turns the refusal off, because watching a ghost drive a line from
+  somewhere else is genuinely funny.
+- 2026-09-08: **The replay browser says who drove each file and what they got**, from the same index, and
+  greys out the ones belonging to another map with an `[another map]` tag - so the wrong file is visible
+  before you click it, not after. Resolved once per listing and re-resolved when you change map, never per
+  frame.
+- 2026-09-08: **A log line that repeated about once a second.** The "ignoring race ghost with no finished
+  time and no script handle" trace sat in the adoption scan, which revisits the race's add lists every scan,
+  and the branch `continue`d without recording anything - so unlike every other adoption path (which dedups
+  by inserting into the tracked list) it had nothing to stop it firing again a second later, for as long as
+  that entry was in the race. It is now said once per instance id. Note this is a sibling of, not the same
+  bug as, the "giving up re-adding" burst that 0.3.0 fixed.
+- 2026-09-08: The scrubber's Respawn tooltip still promised "unspawn + respawn the local player", and a
+  comment in `Spectate.as` still said to unspawn first. 0.5.0 established that the unspawn is exactly the
+  thing that must never happen (it costs you the car and the challenge card in `CampaignSolo`); both now say
+  what the code actually does.
+- 2026-09-08: The update check is verified on Trackmania Turbo as well (it fetched `v0.5.1`, reported up to
+  date, and left the daily gate closed).
+
 ## 0.5.1 - "Once a Day Keeps the Rate Limit Away"
 
 - 2026-09-08: **Ghosts2 tells you when there is a new version.** It asks the GitHub releases API at most

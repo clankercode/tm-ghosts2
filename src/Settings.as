@@ -32,6 +32,12 @@ uint S_LeaderboardCount = 10;
 [Setting category="Loading" name="Show only .Replay.Gbx / .Ghost.Gbx" description="Uncheck to list every file in the folder."]
 bool S_FilterGhostFiles = true;
 
+[Setting category="Loading" name="Load my PB when I enter a map" description="Ghosts++ behaviour: put your own best run on the track by itself, once per map, so you have something to race without opening this window. Skipped when your ghost is already in the race (the campaign card's PERSONAL RECORD loads it too) and in the legacy solo playground, which refuses added ghosts. It never notifies - the Ghosts tab and the status line say what happened."]
+bool S_AutoLoadPB = true;
+
+[Setting category="Loading" name="Allow ghosts from other maps" description="Off: a replay the game's replay index says was driven on a different map is refused, because its racing line does not fit the track you are on. On: load it anyway (it is a good way to watch a ghost drive through the scenery). Replays the index has never seen always load - Ghosts2 only refuses a map it can positively identify as the wrong one."]
+bool S_AllowOtherMapGhosts = false;
+
 enum RespawnOnAdd {
     Never = 0,
     UnlessMidLap = 1,

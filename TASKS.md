@@ -132,6 +132,29 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
 - [x] Trap found doing it: `Meta::ExecutingPlugin()` called inside an export resolves to the **caller's**
       plugin. Capture anything about "this plugin" at module init (`PluginVersion` in `Main.as`)
 
+## Player feedback (Juesto, against 0.2.0)
+
+- [x] **Your own ghost is missing / you have to re-add it by hand / it does not survive restarts** - one
+      cause: there was no auto-load. Entering a map now loads your PB once (`S_AutoLoadPB`, on by default),
+      skipping when your ghost is already in the race or when the playground refuses adds. Verified on A01
+      (loaded and restarted the run so it plays), A02 (no PB - quiet, no retry) and A01 `CampaignSolo`
+      (skipped, the challenge card had already loaded it).
+- [x] **You can load ghosts from other challenges** - refused now, from `CGameCtnApp.ReplayRecordInfos`
+      (`S_AllowOtherMapGhosts` allows it back). Verified both ways live: a B01 replay refused on A01, an A01
+      replay still loaded.
+- [x] **Log spam** - the "ignoring race ghost" trace re-fired every adoption scan; deduped per instance id.
+      Structural fix; the branch did not fire on A01/`CampaignSolo`, so this one is **not** confirmed live.
+      Juesto's actual screenshot is unread, and their spam was more likely the "giving up re-adding" burst
+      that 0.3.0 already fixed.
+- [ ] **"the almost hidden button in the scrubber about the ghosts"** - unresolved: cannot tell which
+      control they meant without the screenshot. Most likely the scrubber's **Respawn** button (the only
+      scrubber control "about the ghosts" that gates them starting), whose need 0.5.0 largely removed by
+      restarting automatically on add. Ask before redesigning anything.
+- [ ] Campaign entered through the game's own ghost-opponents dialog is `CTrackManiaRace1P` with a rules
+      script that has no players, so adds are refused there; entered with an explicit mode script it is
+      `CTrackManiaRaceNew` + `CampaignSolo` and everything works. This is almost certainly Juesto's "campaign
+      on stadium immediately worked" vs. not. Worth making the refusal message name the fix more loudly.
+
 ## Conventions
 
 - Every release gets a funny/jovial code name alongside the version number (Max, 2026-09-08).

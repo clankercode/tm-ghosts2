@@ -14,9 +14,13 @@ Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania
 
 ## Features
 
+- **Your own ghost is already there** — entering a map loads your personal best by itself, once per map,
+  the way Ghosts++ does. It steps aside when your ghost is in the race already, and never interrupts you
+  about it.
 - **Load ghosts from anywhere** — your PB, the author / gold / silver / bronze medal ghosts, any
   `.Replay.Gbx` / `.Ghost.Gbx` from a folder browser over your Replays folder, and any entry of the
-  map's world / zone **leaderboard** (paged, one click per record).
+  map's world / zone **leaderboard** (paged, one click per record). The browser says who drove each
+  replay and what they got, and greys out the ones belonging to a different map.
 - **Scrub every ghost like a video** — pause, step, seek on a time bar, speeds from ¼x to 4x, and a
   resync that hands the clock back to the game. A paused car is perfectly still and seeks land on
   the exact millisecond: Ghosts2 hooks the engine's per-record clock instead of restarting ghosts.
@@ -52,7 +56,8 @@ Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania
 Open the window from the Openplanet **Plugins › Ghosts2** menu. Four tabs:
 
 - **Load** — *Load my PB*, *Load author ghost* (Gold / Silver / Bronze), the leaderboard table
-  (*Fetch*, then **+** on a record), and the replay folder browser (**+** on a file).
+  (*Fetch*, then **+** on a record), and the replay folder browser (**+** on a file). A file the game's
+  replay index says belongs to another map is greyed out and tagged `[another map]`.
 - **Playback** — one row per started ghost: spectate / scrubber / pause / speed / resync buttons,
   the name, the ghost's time over its race time, and state icons (eye = spectated, clock = clock
   owned by Ghosts2, padlock = in the lock group). The top row toggles the lock, pauses, resumes or
@@ -116,9 +121,10 @@ hour per IP shared with everything else on the machine:
 
 ## Settings
 
-All under **Openplanet › Settings › Ghosts2**: replay folder, auto re-add, time control on/off,
-scrubber visibility and step size, lock default, spectate options (force spectator, restart on stop,
-respawn delay, camera type, Follow camera, classic-race camera hook), leaderboard zone, update check.
+All under **Openplanet › Settings › Ghosts2**: replay folder, auto-load your PB, ghosts from other maps,
+auto re-add, time control on/off, scrubber visibility and step size, lock default, spectate options (force
+spectator, restart on stop, respawn delay, camera type, Follow camera, classic-race camera hook),
+leaderboard zone, update check.
 
 Two of them share a shape worth knowing: **Restart the run when a ghost is added** (Loading) and
 **Restart when you stop spectating** (Spectate) are both *Never / Unless mid-lap / Always*, defaulting to
@@ -159,7 +165,8 @@ camera reset, removal, and hook health. It adapts to what the race can do, so it
 legacy solo playground where ghosts cannot be added, at a `CampaignSolo` challenge card where there is no
 run to restart, and on Turbo where spectating is refused by design (`GAME=turbo tools/tm2-smoke.sh`).
 Current: **23/23 on ManiaPlanet 4** (TimeAttack and a started `CampaignSolo` run); Turbo's last full run was
-a clean **19/19** on 0.5.0, before the two update-check assertions were added.
+a clean **19/19** on 0.5.0, before the two update-check assertions were added - the update check itself has
+since been verified on Turbo by hand.
 `tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack
 (`GAME=turbo SHOTS=ui tools/showcase-shots.sh <instId>` for the Turbo set).
 
@@ -178,6 +185,12 @@ a clean **19/19** on 0.5.0, before the two update-check assertions were added.
   Ghosts2 also asks whether there is a run to restart at all: `CampaignSolo` parks the car on the track
   behind that card with `IsSpawned` true but `RaceStartTime` 0, and spawning from there costs you the
   screen you are on. An add made there is **held**, not dropped, and fires the moment you start your run.
+- **Which map a replay belongs to** — the `CGameGhostScript` handed back by `Replay_Load` has only a
+  nickname, a time and checkpoints, so a ghost carries no map identity. `CGameCtnApp.ReplayRecordInfos` does:
+  one `CGameCtnReplayRecordInfo` per replay the game has catalogued, with `MapUid`, `PlayerNickname` and
+  `BestTime`. Its `FileName` is relative to the Replays folder and backslash-separated, so Ghosts2 matches it
+  as a suffix of the absolute browse path. A file missing from that index is treated as unknown, never as
+  wrong - a replay outside the Replays tree still loads.
 - **Auto re-add** — the stock solo mode calls `RaceGhost_RemoveAll()` on every phase transition.
   Ghosts2 keeps the `CGameGhostScript@` handles and puts them back, rate limited, giving up after a
   few failed attempts so it never fights the mode script. `RaceGhost_Add` takes effect at the next

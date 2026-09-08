@@ -116,6 +116,9 @@ array<uint>@ Ghosts_AdoptRaceInstances(CTrackManiaRaceRules@ rules) {
     for (int i = int(g_removedInstIds.Length) - 1; i >= 0; i--) {
         if (ids.Find(g_removedInstIds[i]) < 0) g_removedInstIds.RemoveAt(uint(i));
     }
+    for (int i = int(g_ignoredInstIds.Length) - 1; i >= 0; i--) {
+        if (ids.Find(g_ignoredInstIds[i]) < 0) g_ignoredInstIds.RemoveAt(uint(i));
+    }
     return ids;
 }
 
@@ -153,7 +156,12 @@ bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
         // warnings every time the mode rebuilt its ghosts with a fresh instance id.
         if (Ghosts_WasRemovedKey(pg.key)) continue;   // you removed this ghost; the mode re-added it under a new id
         if (pg.ghost is null && (pg.raceTime == 0 || pg.raceTime == 0xffffffff)) {
-            trace("Ghosts2: ignoring race ghost with no finished time and no script handle: " + pg.DisplayName() + " inst " + Text::Format("0x%08x", instId));
+            // Say so once per instance, not once per scan: this entry stays in the race's add list for the
+            // whole run, and adoption revisits it every time.
+            if (g_ignoredInstIds.Find(instId) < 0) {
+                g_ignoredInstIds.InsertLast(instId);
+                trace("Ghosts2: ignoring race ghost with no finished time and no script handle: " + pg.DisplayName() + " inst " + Text::Format("0x%08x", instId));
+            }
             continue;
         }
         g_ghosts.InsertLast(pg);
@@ -311,6 +319,10 @@ array<uint> g_removedInstIds;
 // ...and by identity (nickname + time), because the mode re-adds its ghosts under a *new* instance id after
 // every phase change: an id-only filter let a ghost you removed walk straight back into the list.
 array<string> g_removedKeys;
+// Instances deliberately not adopted (the local player's own live recording, see Ghosts_AdoptList). Adoption
+// runs every scan and these never enter g_ghosts, so without remembering them the "ignoring race ghost" line
+// was written to the log once per scan - about once a second, for as long as the run lasted.
+array<uint> g_ignoredInstIds;
 
 bool Ghosts_WasRemoved(uint instId) { return g_removedInstIds.Find(instId) >= 0; }
 bool Ghosts_WasRemovedKey(const string &in key) { return key.Length > 0 && g_removedKeys.Find(key) >= 0; }
@@ -362,6 +374,7 @@ void Ghosts_RemoveAll() {
 void Ghosts_ForgetAll() {
     g_removedInstIds.RemoveRange(0, g_removedInstIds.Length);
     g_removedKeys.RemoveRange(0, g_removedKeys.Length);
+    g_ignoredInstIds.RemoveRange(0, g_ignoredInstIds.Length);
     Spectate_Reset();
     TimeCtl_ReleaseAll();
     g_ghosts.RemoveRange(0, g_ghosts.Length);
@@ -379,6 +392,7 @@ void Ghosts_Update() {
         Ghosts_ForgetAll();
         Ghosts_CancelSpawnForAdd();
         Lb_OnMapChanged();
+        AutoLoad_OnMapChanged();
         SetStatus("");
         return;
     }

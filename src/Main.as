@@ -16,6 +16,7 @@ void Main() {
 
 void Update(float dt) {
     Ghosts_Update();
+    AutoLoad_Update();
     TimeCtl_Update(dt);
     CamTarget_Update();
     UpdateCheck_Update();

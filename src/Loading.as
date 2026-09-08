@@ -6,6 +6,10 @@ bool g_busy = false;
 string g_status = "";
 
 void SetStatus(const string &in msg, bool notify = false, bool isError = false) {
+    // A load nobody asked for reports through the status line and an ordinary log line (see AutoLoad_Update):
+    // no notification, and not a warning either - "this map has no personal best yet" is unremarkable, and
+    // warning about it on every map entry is exactly the kind of log noise the plugin should not add.
+    if (g_quietLoad) { notify = false; isError = false; }
     g_status = msg;
     if (isError) warn(msg); else trace(msg);
     if (notify) UI::ShowNotification("Ghosts2", msg, isError ? 6000 : 3000);
@@ -59,6 +63,48 @@ string ParentDir(const string &in path) {
     return p.SubStr(0, uint(slash) + 1);
 }
 
+// --- which map is a replay file from? --------------------------------------
+//
+// The CGameGhostScript that Replay_Load hands back carries no map identity at all - only a nickname, a time
+// and checkpoints - so a replay from another track used to load without a word and drive a racing line that
+// had nothing to do with the map you were on. The game's own replay index does know: CGameCtnApp
+// .ReplayRecordInfos has a row per catalogued replay with its MapUid (plus who drove it and their time,
+// which is worth showing in the browser anyway). Its FileName is relative to the Replays folder and
+// backslash-separated ("Autosaves\AutoSave_PersonalBest_B01.Replay.Gbx"), while the browser works in
+// absolute paths, so match it as a path suffix.
+//
+// A file the index has never seen (a folder outside the Replays tree, a replay dropped in since the game
+// last catalogued) returns null, which has to read as "unknown" and never as "wrong map".
+#if !TURBO
+CGameCtnReplayRecordInfo@ ReplayFileInfo(const string &in path) {
+    auto app = App();
+    if (app is null) return null;
+    string want = path.Replace("\\", "/").ToLower();
+    if (want.Length == 0) return null;
+    for (uint i = 0; i < app.ReplayRecordInfos.Length; i++) {
+        auto ri = app.ReplayRecordInfos[i];
+        if (ri is null) continue;
+        string rel = string(ri.FileName).Replace("\\", "/").ToLower();
+        // Folder rows have an empty FileName; EndsWith("") is true, so they would match everything.
+        if (rel.Length > 0 && want.EndsWith(rel)) return ri;
+    }
+    return null;
+}
+
+// "" when the file is not in the index (unknown), else the uid of the map it was driven on.
+string ReplayFileMapUid(const string &in path) {
+    auto ri = ReplayFileInfo(path);
+    return ri is null ? "" : string(ri.MapUid);
+}
+
+// True only when we positively know the file belongs to a different map than the one loaded.
+bool ReplayIsFromAnotherMap(const string &in path) {
+    string fileUid = ReplayFileMapUid(path);
+    string mapUid = CurrentMapUid();
+    return fileUid.Length > 0 && mapUid.Length > 0 && fileUid != mapUid;
+}
+#endif
+
 bool LooksLikeGhostFile(const string &in path) {
     string lower = path.ToLower();
     return lower.EndsWith(".replay.gbx") || lower.EndsWith(".ghost.gbx");
@@ -86,6 +132,39 @@ void Browse_Refresh() {
         } else if (!S_FilterGhostFiles || LooksLikeGhostFile(e)) {
             g_browseFiles.InsertLast(e);
         }
+    }
+    Browse_RefreshFileInfo();
+}
+
+// Who drove each listed replay, what they got, and whether it is even this map - resolved once per listing
+// rather than per frame (the row lookup is a scan of the whole replay index, and both lists are long).
+array<string> g_browseFileWho;      // "nickname  0:12.34", or "" when the index does not know the file
+array<bool> g_browseFileForeign;    // positively identified as belonging to a different map
+string g_browseInfoMapUid = "";     // the map "foreign" was decided against; changes when you change map
+
+// Recompute the per-file info if it was worked out for a different map than the one now loaded.
+void Browse_RefreshFileInfoIfStale() {
+    if (g_browseInfoMapUid != CurrentMapUid()) Browse_RefreshFileInfo();
+}
+
+void Browse_RefreshFileInfo() {
+    g_browseFileWho.RemoveRange(0, g_browseFileWho.Length);
+    g_browseFileForeign.RemoveRange(0, g_browseFileForeign.Length);
+    string mapUid = CurrentMapUid();
+    g_browseInfoMapUid = mapUid;
+    for (uint i = 0; i < g_browseFiles.Length; i++) {
+        string who = "";
+        bool foreign = false;
+#if !TURBO
+        auto ri = ReplayFileInfo(g_browseFiles[i]);
+        if (ri !is null) {
+            who = Text::OpenplanetFormatCodes(string(ri.PlayerNickname));
+            if (ri.BestTime > 0 && ri.BestTime != 0xffffffff) who += "  " + FormatTime(ri.BestTime);
+            foreign = mapUid.Length > 0 && string(ri.MapUid).Length > 0 && string(ri.MapUid) != mapUid;
+        }
+#endif
+        g_browseFileWho.InsertLast(who);
+        g_browseFileForeign.InsertLast(foreign);
     }
 }
 
@@ -142,6 +221,12 @@ void LoadReplayInner(const string &in path) {
     auto dfm = rules.DataFileMgr;
     if (dfm is null) {
         SetStatus("DataFileMgr is null (solo-only surface).", true, true);
+        return;
+    }
+    if (!S_AllowOtherMapGhosts && ReplayIsFromAnotherMap(path)) {
+        SetStatus(BaseName(path) + " was driven on a different map, so its ghost would take a racing line "
+                  "that does not fit this track. Loading → \"Allow ghosts from other maps\" loads it anyway.",
+                  true, true);
         return;
     }
     SetStatus("Loading " + BaseName(path) + " ...");
@@ -466,4 +551,70 @@ void SaveGhostInner() {
     }
     dfm.TaskResult_Release(task.Id);
 #endif
+}
+
+
+// --- loading something automatically when you arrive on a map ---------------
+//
+// Ghosts++ puts your own ghost on the track when you enter a map, and Ghosts2 not doing that was the single
+// most confusing thing about it for a new user: the plugin looks inert until you find the Load tab, and a
+// ghost you did load by hand is gone the moment you leave the map and come back (the retained list is
+// dropped on a map change, deliberately - the ghosts belong to the map you loaded them for).
+//
+// This runs at most once per map, and stays quiet: no notification either way, because something that
+// happens by itself on every map must not interrupt. The status line and the Ghosts tab still say what
+// happened, and a failure here is genuinely unremarkable - plenty of maps have no personal best yet.
+
+string g_autoLoadedFor = "";    // map uid the auto-load has already run for ("" = not yet on this map)
+uint g_autoLoadAt = 0;          // Time::Now to fire at, 0 = nothing scheduled
+bool g_quietLoad = false;       // suppress notifications for a load nobody asked for
+
+// The race is usually not finished setting itself up on the frame the map uid appears, and a load fired into
+// that window races the mode's own ghost handling and just gets rejected.
+const uint AutoLoadDelayMs = 1500;
+
+void AutoLoad_OnMapChanged() {
+    g_autoLoadedFor = "";
+    g_autoLoadAt = 0;
+}
+
+// Is one of the ghosts already in the race the local player's own? The campaign's challenge card loads it
+// when you pick PERSONAL RECORD, and Ghosts2 adopts that - auto-loading on top would add it twice.
+bool OwnGhostAlreadyPresent() {
+    string me = LocalPlayerName();
+    if (me.Length == 0) return false;
+    for (uint i = 0; i < g_ghosts.Length; i++) {
+        if (g_ghosts[i].nickname == me) return true;
+    }
+    for (uint i = 0; i < g_engineGhosts.Length; i++) {
+        if (g_engineGhosts[i].nickname == me) return true;
+    }
+    return false;
+}
+
+void AutoLoad_Update() {
+    if (!S_AutoLoadPB || g_busy) return;
+    string uid = CurrentMapUid();
+    if (uid.Length == 0 || uid == g_autoLoadedFor) return;
+    // Not in a race that can take ghosts at all: the legacy solo playground refuses every RaceGhost_Add, so
+    // firing here would only produce a guaranteed failure on every map entry.
+    if (!Race_CanAddGhosts()) return;
+    if (g_autoLoadAt == 0) { g_autoLoadAt = Time::Now + AutoLoadDelayMs; return; }
+    if (Time::Now < g_autoLoadAt) return;
+    // Claim the map before starting: this must not fire twice while the load is in flight.
+    g_autoLoadedFor = uid;
+    g_autoLoadAt = 0;
+    if (OwnGhostAlreadyPresent()) {
+        trace("Ghosts2: auto-load skipped, your own ghost is already in the race");
+        return;
+    }
+    startnew(CoroutineFunc(AutoLoadPbCoro));
+}
+
+void AutoLoadPbCoro() {
+    g_busy = true;
+    g_quietLoad = true;
+    LoadPbInner();
+    g_quietLoad = false;
+    g_busy = false;
 }

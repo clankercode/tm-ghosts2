@@ -107,7 +107,8 @@ void Spectate_StopEx(bool respawn) {
     // Forcing the spectator made the terminal's CGameCtnMediaClipPlayer play a spectator camera clip aimed at the
     // ghost. Clearing ForceSpectator/SpectatorForcedTarget does not stop that clip (it keeps pushing a forced
     // camera block every frame: camera stuck on the ghost). Only a (re)spawn of the local player ends it, which
-    // is also what Ghosts++ does when leaving a ghost. Unspawn first so the ghosts restart with the player.
+    // is also what Ghosts++ does when leaving a ghost. Spawn only - never unspawn first (see Race_SpawnLocal:
+    // in CampaignSolo the unspawn takes the car away and drops the challenge card back over the track).
     if (wasForced) {
         if (respawn) {
             if (!Race_SpawnLocal(S_SpectateRespawnDelayMs)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");

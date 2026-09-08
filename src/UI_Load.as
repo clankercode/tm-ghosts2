@@ -32,6 +32,7 @@ void DrawLoadTab() {
     UI::Separator();
 
     if (!g_browseInit) Browse_Refresh();
+    else Browse_RefreshFileInfoIfStale();
 
     if (UI::Button(Icons::Refresh + "##refresh")) Browse_Refresh();
     UI::SameLine();
@@ -59,12 +60,25 @@ void DrawLoadTab() {
     }
     UI::BeginDisabled(rules is null || g_busy);
     for (uint i = 0; i < g_browseFiles.Length; i++) {
+        // A replay the game's index says belongs to another map: it would drive a line that does not fit
+        // this track, so it is refused (unless the setting allows it) and says so here rather than at the
+        // click. The metadata arrays are rebuilt with the listing, but stay defensive about the lengths.
+        bool foreign = i < g_browseFileForeign.Length && g_browseFileForeign[i];
+        string who = i < g_browseFileWho.Length ? g_browseFileWho[i] : "";
         UI::PushID("f" + i);
+        UI::BeginDisabled(foreign && !S_AllowOtherMapGhosts);
         if (UI::Button(Icons::PlusCircle + "##load")) Load_ReplayFile(g_browseFiles[i]);
-        AddSimpleTooltip("DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
+        UI::EndDisabled();
+        AddSimpleTooltip(foreign
+            ? "Driven on a different map. Loading -> \"Allow ghosts from other maps\" to load it anyway."
+            : "DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
         UI::SameLine();
         UI::AlignTextToFramePadding();
-        UI::Text(BaseName(g_browseFiles[i]));
+        UI::Text((foreign ? "\\$888" : "") + BaseName(g_browseFiles[i]));
+        if (who.Length > 0 || foreign) {
+            UI::SameLine();
+            UI::Text("\\$888" + who + (foreign ? "  \\$fc4[another map]" : ""));
+        }
         UI::PopID();
     }
     UI::EndDisabled();
