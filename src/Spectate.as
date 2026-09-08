@@ -64,6 +64,11 @@ bool Spectate_Start(uint instId) {
 
     g_specActive = true;
     g_specInstId = instId;
+    // The scrubber follows the ghost you are watching. Spectating and scrubbing are the same intent - "look
+    // at this run" - and leaving them pointed at different ghosts meant the strip on screen while you watched
+    // one ghost was driving another, or nothing at all. Same effect as the sliders button on the ghost's row,
+    // and it also makes this ghost the lock leader, so a seek moves what you can see.
+    Scrubber_Open(pg);
     return true;
 }
 

@@ -139,6 +139,8 @@ namespace Ghosts2 {
         o["tracked"] = g_ghosts.Length;
         o["spectating"] = g_specActive;
         o["spectateInstId"] = g_specInstId;
+        // which ghost the scrubber strip is driving (0 = none); spectating points it at the ghost you watch
+        o["scrubberInstId"] = g_scrubGhost is null ? 0 : g_scrubGhost.instId;
         o["timeCtlUpdates"] = g_timeCtlUpdates;
         o["timeCtlWrites"] = g_timeCtlWrites;
         o["timeCtlHook"] = g_clockHook !is null;
