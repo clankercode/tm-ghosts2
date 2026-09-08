@@ -177,8 +177,35 @@ void Spectate_CycleTurboCam(bool backwards) {
     CamTarget_SetTurboCamKind(S_TurboSpectateCam);
 }
 
-string Spectate_TurboCamLabel() {
-    return S_TurboSpectateCam.Length == 0 ? "Game" : S_TurboSpectateCam;
+// Display names for the camera kinds. The kind is the identity - it is what the setting stores and what
+// Ghosts2::SetTurboSpectateCam takes - so these are labels only and renaming one breaks nothing. The class
+// names the kinds come from are far too long for a button on the scrubber strip, which is why they were
+// being clipped to "TrackManiaRac...". Names chosen by Max; the question marks are his, and honest: which
+// engine camera is which of the game's own Cam 1/2/3 has not been confirmed.
+string Spectate_TurboCamLabel(const string &in kind) {
+    if (kind.Length == 0) return "Default";
+    if (kind == "TrackManiaRace3") return "Race3 (Cam1?)";
+    if (kind == "TrackManiaRace3#2") return "Race3#2 (Cam?)";
+    if (kind == "VehicleInternal") return "Intrnl; C3?";
+    if (kind == "VehicleInternal#2") return "Intrnl#2";
+    if (kind == "TrackManiaRace") return "Race (cam2?)";
+    if (kind == "Camera") return "BaseCam ??";
+    return kind;   // Free, and anything a different playground turns out to offer
+}
+
+string Spectate_TurboCamLabel() { return Spectate_TurboCamLabel(S_TurboSpectateCam); }
+
+// Widest label this playground can show, so the button keeps one size while you cycle it instead of the
+// strip re-flowing on every click.
+float Spectate_TurboCamButtonWidth() {
+    auto kinds = CamTarget_TurboCamKinds();
+    float w = UI::MeasureString(Spectate_TurboCamLabel("")).x;
+    for (uint i = 0; i < kinds.Length; i++) {
+        float k = UI::MeasureString(Spectate_TurboCamLabel(kinds[i])).x;
+        if (k > w) w = k;
+    }
+    // icon, the space after it, and the frame padding either side
+    return w + UI::MeasureString(Icons::VideoCamera + " ").x + UI::GetStyleVarVec2(UI::StyleVar::FramePadding).x * 2 + 4;
 }
 #endif
 

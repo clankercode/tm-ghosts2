@@ -190,7 +190,7 @@ void DrawScrubberWindow() {
 #if TURBO
         // Turbo selects a camera object rather than forcing a camera *type*, so the button offers whatever
         // this playground's ManagedCams actually contains (Free among them) instead of a fixed list.
-        if (UI::Button(Icons::VideoCamera + " " + Spectate_TurboCamLabel() + "##cam", vec2(120, 0))) Spectate_CycleTurboCam(false);
+        if (UI::Button(Icons::VideoCamera + " " + Spectate_TurboCamLabel() + "##cam", vec2(Spectate_TurboCamButtonWidth(), 0))) Spectate_CycleTurboCam(false);
         if (UI::IsItemHovered()) {
             AddSimpleTooltip("Spectator camera (click = next, right click = previous)\nThese are this playground's own cameras, read from the game: Free is a real free camera you can fly.\nGame leaves whatever the game had selected.");
             if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleTurboCam(true);

@@ -350,6 +350,27 @@ namespace Ghosts2 {
 #if TURBO
         o["turboHookTicks"] = g_turboHookTicks;
 #endif
+        // Map objective times, including Turbo's skill medal - the "super author time" the Super Solo
+        // campaign scores against. Here so it can be checked without attaching a debugger.
+        auto mp = CurrentMap();
+        if (mp !is null) {
+            auto mo = Json::Object();
+            mo["bronze"] = mp.TMObjective_BronzeTime;
+            mo["silver"] = mp.TMObjective_SilverTime;
+            mo["gold"] = mp.TMObjective_GoldTime;
+            mo["author"] = mp.TMObjective_AuthorTime;
+            auto mi = mp.MapInfo;
+            if (mi !is null) {
+                mo["bestTime"] = mi.BestTime;
+#if TURBO
+                // Turbo only: the skill medal is the Super Solo campaign's "super author time" tier.
+                mo["officialSkillMedal"] = mi.OfficialSkillMedal;
+                mo["officialBestRecord"] = mi.OfficialBestRecord;
+                mo["soloScores"] = mi.SoloScores.Length;
+#endif
+            }
+            o["mapObjectives"] = mo;
+        }
         o["lockAll"] = Lock_Enabled();
         o["camResets"] = g_camResets;
         o["clipDrops"] = g_clipDrops;
