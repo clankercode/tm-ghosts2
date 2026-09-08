@@ -29,6 +29,8 @@ Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania
   from where you are: Ghosts2 knows how to end the engine's spectator camera clip without a respawn.
 - **Save** any loaded ghost back to a replay file, remove ghosts one by one or all at once, and keep
   ghosts alive across the mode script's periodic `RaceGhost_RemoveAll` and plugin reloads.
+- **Tells you when there is a new version** — one GitHub releases check per day at most, cached, with a line
+  in the window and a link when a newer release exists.
 - **Scriptable** — exports for other plugins and a command pack for scripted control.
 - **Runs on Trackmania Turbo too** — loading, the map's record table, playback control and the lock all
   work there; see [Trackmania Turbo](#trackmania-turbo) for the one feature that does not yet.
@@ -95,11 +97,28 @@ spectating*, on by default, same as Ghosts++) or, with that setting off, ends th
 in place so you carry on without a restart. *Reset camera* on the Ghosts / Playback tabs points the
 camera back at your car if anything ever leaves it on a ghost.
 
+## Update check
+
+Ghosts2 asks the GitHub releases API whether a newer version has been published, **at most once every 24
+hours**, and shows a line at the top of the window with a link when there is one. Turn it off with
+*Settings → Updates → Check GitHub for a new release*; *State → Check for updates now* asks immediately.
+
+The daily budget is the point of the design, because unauthenticated `api.github.com` allows 60 requests an
+hour per IP shared with everything else on the machine:
+
+- the gate is a persisted wall-clock timestamp, so restarting the game or reloading the plugin does not
+  buy another request;
+- the timestamp is written **before** the request goes out, so a timeout, an error or a crash mid-flight
+  still consumes the day rather than becoming a retry loop;
+- a clock that has moved backwards counts as "never checked" instead of locking the check out;
+- a version you have been told about is not announced again — the notification fires once per new version,
+  and after that it is just the line in the window.
+
 ## Settings
 
 All under **Openplanet › Settings › Ghosts2**: replay folder, auto re-add, time control on/off,
 scrubber visibility and step size, lock default, spectate options (force spectator, restart on stop,
-respawn delay, camera type, Follow camera, classic-race camera hook), leaderboard zone.
+respawn delay, camera type, Follow camera, classic-race camera hook), leaderboard zone, update check.
 
 Two of them share a shape worth knowing: **Restart the run when a ghost is added** (Loading) and
 **Restart when you stop spectating** (Spectate) are both *Never / Unless mid-lap / Always*, defaulting to
@@ -139,7 +158,8 @@ starting, the replay browser, a leaderboard round trip, playback and the lock, s
 camera reset, removal, and hook health. It adapts to what the race can do, so it is also useful in the
 legacy solo playground where ghosts cannot be added, at a `CampaignSolo` challenge card where there is no
 run to restart, and on Turbo where spectating is refused by design (`GAME=turbo tools/tm2-smoke.sh`).
-Current: **21/21 on ManiaPlanet 4** (TimeAttack and a started `CampaignSolo` run) and **19/19 on Turbo**.
+Current: **23/23 on ManiaPlanet 4** (TimeAttack and a started `CampaignSolo` run); Turbo's last full run was
+a clean **19/19** on 0.5.0, before the two update-check assertions were added.
 `tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack
 (`GAME=turbo SHOTS=ui tools/showcase-shots.sh <instId>` for the Turbo set).
 

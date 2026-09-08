@@ -122,6 +122,16 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
 - [x] `GetLocalLogin()` returns `""` on this install even though authenticated web calls succeed, so the
       local-player lookup falls back to the only player in a solo race
 
+## Update check
+
+- [x] Once-a-day GitHub releases check (`src/UpdateCheck.as`, 2026-09-08, Max's request): at most one
+      request per 24 h per install, gated on a **persisted** wall-clock timestamp written *before* the
+      request so failures cannot retry; notification once per newly discovered version; banner + link in
+      the window; `State → Check for updates now` for a manual ask; state exposed to the pack and asserted
+      by the smoke test
+- [x] Trap found doing it: `Meta::ExecutingPlugin()` called inside an export resolves to the **caller's**
+      plugin. Capture anything about "this plugin" at module init (`PluginVersion` in `Main.as`)
+
 ## Conventions
 
 - Every release gets a funny/jovial code name alongside the version number (Max, 2026-09-08).

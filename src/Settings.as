@@ -1,6 +1,25 @@
 [Setting hidden]
 bool S_ShowWindow = true;
 
+[Setting category="Updates" name="Check GitHub for a new release" description="At most once every 24 hours, ask the GitHub releases API whether a newer Ghosts2 has been published, and say so in the window if there is one."]
+bool S_CheckForUpdates = true;
+
+// Unix seconds of the last check *attempt*, as a string: Openplanet settings have no int64 type and the
+// value does not fit an int. Persisted so the daily gate survives restarts and reloads.
+[Setting hidden]
+string S_UpdateLastCheck = "0";
+
+[Setting hidden]
+string S_UpdateLatestVersion = "";
+
+[Setting hidden]
+string S_UpdateLatestUrl = "";
+
+// The version the user has already been notified about, so an update they chose not to install does not
+// pop a notification again every day.
+[Setting hidden]
+string S_UpdateNotifiedVersion = "";
+
 [Setting category="Loading" name="Replays folder" description="Blank = the game's own ghost folder: Replays on ManiaPlanet, the profile's MapsGhosts on Turbo."]
 string S_ReplaysFolder = "";
 

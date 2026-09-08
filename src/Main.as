@@ -1,6 +1,9 @@
 // Ghosts2: ManiaPlanet 4 (TM2) port of the Ghosts++ ideas: list, load, remove and spectate ghosts.
 
 const string PluginName = Meta::ExecutingPlugin().Name;
+// Captured once, at this module's init. Meta::ExecutingPlugin() resolves to whoever is *executing*, so
+// calling it inside an export gives the caller's plugin - Ghosts2's own version has to be read from here.
+const string PluginVersion = Meta::ExecutingPlugin().Version;
 const string MenuTitle = "\\$dd5" + Icons::HandPointerO + "\\$z " + PluginName;
 
 void Main() {
@@ -15,6 +18,7 @@ void Update(float dt) {
     Ghosts_Update();
     TimeCtl_Update(dt);
     CamTarget_Update();
+    UpdateCheck_Update();
 }
 
 void OnDestroyed() { Cleanup(); }
@@ -55,6 +59,7 @@ void RenderInterface() {
     UI::SetNextWindowPos(int(float(Display::GetWidth()) / UI::GetScale()) - 740, 40, UI::Cond::FirstUseEver);
     if (g_moveWindow) { g_moveWindow = false; UI::SetNextWindowPos(g_moveWindowTo.x, g_moveWindowTo.y, UI::Cond::Always); }
     if (UI::Begin(MenuTitle, S_ShowWindow)) {
+        DrawUpdateBanner();
         // MP4 Openplanet: UI::BeginTabBar returns void (not bool as in TM2020)
         UI::BeginTabBar("g2-tabs");
         if (UI::BeginTabItem("Ghosts", TabFlags("ghosts"))) { DrawGhostsTab(); UI::EndTabItem(); }
@@ -84,6 +89,8 @@ void DrawStateTab() {
     UI::Text("Status: \\$888" + g_status);
     UI::Text("Time control: \\$888" + (g_clockHook is null ? "hook off" : "hook on") + ", " + g_timeCtlUpdates + " updates, " + g_timeCtlWrites + " hook writes, " + g_clock.Length + " owned clock(s)" + (g_timeCtlLastErr.Length > 0 ? ", last error: " + g_timeCtlLastErr : ""));
     UI::Text("Camera target: \\$888" + (g_camHook is null ? "hook off" : "hook on") + (g_camForcedId == CamId_None ? ", none" : ", forced id " + Text::Format("0x%08x", g_camForcedId)) + ", " + g_camHookWrites + " hook writes" + (g_camLastErr.Length > 0 ? ", last error: " + g_camLastErr : ""));
+    UI::Separator();
+    DrawUpdateStatus();
     UI::Separator();
     if (UI::Button("Open settings")) Meta::OpenSettings(Meta::ExecutingPlugin());
 }

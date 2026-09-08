@@ -159,6 +159,14 @@ namespace Ghosts2 {
         o["restartOffered"] = g_restartOffered;
         o["restartHeld"] = g_restartHeld;
         o["spawnForAddIn"] = g_spawnForAddAt == 0 ? -1 : int(g_spawnForAddAt) - int(Time::Now);
+        // Update check: `updateCheckDue` is the thing worth asserting - it must be false right after a
+        // check, or the daily gate is not holding and the plugin would hammer the GitHub API.
+        o["updateCheckEnabled"] = S_CheckForUpdates;
+        o["updateLastCheck"] = S_UpdateLastCheck;
+        o["updateCheckDue"] = UpdateCheck_Due();
+        o["updateLatestVersion"] = S_UpdateLatestVersion;
+        o["updateAvailable"] = UpdateAvailable();
+        o["updateLastError"] = g_updLastError;
         return o;
     }
 

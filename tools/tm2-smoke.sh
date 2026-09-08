@@ -230,6 +230,21 @@ sys.exit(0 if len(json.load(sys.stdin)['data']['entries'])>0 else 1)\""; then
   else bad "removed ghost came back (instId $id2 still listed)"; fi
 fi
 
+head_ "the update check stays inside its daily budget"
+# The one thing that can go wrong here is the daily gate not holding: that would mean a request to the
+# GitHub API on every load or every frame, and a shared unauthenticated rate limit is easy to exhaust.
+if [[ "$(state "d['updateCheckEnabled']")" != "True" ]]; then
+  note "update check is turned off"
+else
+  last="$(state "d['updateLastCheck']")"
+  due="$(state "d['updateCheckDue']")"
+  if [[ "$last" == "0" ]]; then
+    note "no check has run yet in this install (it runs within a minute of load)"
+  elif [[ "$due" == "False" ]]; then ok "a check has run and the next one is not due (last stamp $last)"
+  else bad "a check has run but another is already due - the daily gate is not holding"; fi
+  err="$(state "d['updateLastError']")"; [[ -z "$err" ]] && ok "no update-check error" || note "update check last error: $err"
+fi
+
 head_ "hooks are healthy"
 # Turbo needs no clock hook (nothing there rewrites a record's start time per frame) and has no camera
 # override yet, so what must hold is "the clock is drivable", not "a hook object exists".

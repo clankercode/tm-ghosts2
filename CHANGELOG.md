@@ -2,6 +2,29 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.5.1 - "Once a Day Keeps the Rate Limit Away"
+
+- 2026-09-08: **Ghosts2 tells you when there is a new version.** It asks the GitHub releases API at most
+  once every 24 hours and shows a line at the top of the window, with *Open releases page* / *Copy link*,
+  while a newer release exists. Setting *Updates → Check GitHub for a new release* (on by default) turns it
+  off; *State → Check for updates now* asks immediately. The whole design is about the shared
+  unauthenticated GitHub budget of 60 requests an hour per IP: the daily gate is a **persisted wall-clock
+  timestamp**, so restarting the game or reloading the plugin buys no extra request; the timestamp is
+  written **before** the request goes out, so a timeout, an error or a crash mid-flight still consumes the
+  day instead of becoming a retry loop; a clock that has moved backwards counts as "never checked" rather
+  than locking the check out; and the notification fires once per newly discovered version, so an update
+  you chose not to install does not nag you again tomorrow. Between checks, `Update()` costs one integer
+  compare per frame and one clock read per minute.
+- 2026-09-08: **`Meta::ExecutingPlugin()` inside an export returns the *caller's* plugin, not yours.** The
+  first cut of the update check compared the latest release against `Meta::ExecutingPlugin().Version` and
+  so reported "update available" to any plugin that called `Ghosts2::State()` - the command pack's own
+  0.1.0 was being compared against Ghosts2's releases. The version is now captured once at module init
+  (`PluginVersion` in `Main.as`), like `PluginName` already was. Same trap as `Dev::Hook` from an export.
+- 2026-09-08: `ghosts2.state` reports `updateCheckEnabled`, `updateLastCheck`, `updateCheckDue`,
+  `updateLatestVersion`, `updateAvailable` and `updateLastError`, and `tools/tm2-smoke.sh` asserts that the
+  daily gate is actually holding - a broken gate would be invisible except as GitHub rate-limit errors
+  much later.
+
 ## 0.5.0 - "Turbo Had a Script All Along"
 
 - 2026-09-08: **Correction to 0.4.0: Turbo does have a mode script.** The "no mode script at all" reading
