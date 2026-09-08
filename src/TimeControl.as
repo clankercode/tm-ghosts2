@@ -34,7 +34,21 @@ const uint64 O_Rec_StartTime = 0x0c;
 const uint64 O_Rec_Started = 0x10;
 const uint64 O_Rec_InstId = 0x24;
 const uint64 O_Rec_EngineElapsed = 0x14;   // engine-written playback time (see TimeCtl_ReadRecord)
-const bool ClockNeedsHook = false;
+const bool ClockNeedsHook = false;   // the Update path works without one; the hook below is an upgrade, not a requirement
+
+// Turbo's playback tick: TickPlayback(ECX = record, [ESP+4] = nowMs) at 0x009116f0 turns ms into ns and
+// calls the record writer at 0x00910c40 (which reads rec+0x04 ghost and rec+0x10 started, so the shape is
+// confirmed). Hooking the MOV EDX,1000000 at +0x0d is the one instruction where both values this plugin
+// needs are already in registers - ECX is still the record and EAX is still nowMs, on both branches above
+// it - and it is five bytes of MOV with no relative operand, so it relocates with no padding.
+//
+// Why bother, when Update() already holds the clock: writing from Update() means predicting the engine's
+// next tick, and Turbo ticks ghosts at about 30 Hz. Measured paused at a steady frame rate, the prediction
+// left a rolling hold error of -9..+16 ms - roughly 0.6 m of position wobble - which is the stutter that
+// survived 0.7.0. Inside the tick there is nothing to predict: nowMs is the value the engine is about to
+// use, so StartTime = nowMs - wanted is exact.
+const uint64 TurboTick_RVA = 0x5116fd;
+const string TurboTick_Prologue = "BA 40 42 0F 00";   // MOV EDX, 0x000F4240
 #else
 const uint16 O_Race_AddEntries = 0xdd0;        // live copy, rebuilt from the script list at every (re)spawn
 const uint16 O_Race_AddEntryCount = 0xdd8;
@@ -124,13 +138,63 @@ void OnUpdatePlaybackTime(uint64 rdx, uint64 r8) {
     }
 }
 
+#if TURBO
+// Ticks this hook has actually driven. Until it is non-zero the register mapping is unproven, so Update()
+// keeps holding the clocks the old way: a hook whose arguments arrive in unexpected registers then costs
+// nothing instead of flinging ghosts across the map on a garbage StartTime.
+uint g_turboHookTicks = 0;
+
+void OnTurboTickPlayback(uint64 ecx, uint64 eax) {
+    uint nowMs = uint(eax & 0xffffffff);
+    if (nowMs == 0) return;
+    for (uint i = 0; i < g_clock.Length; i++) {
+        auto e = g_clock[i];
+        if (e.rec != ecx) continue;
+        // Refuse a clock that cannot be the one we have been following. This is the guard that makes a
+        // wrong register mapping harmless rather than destructive.
+        if (e.lastNowMs != 0) {
+            int64 step = int64(nowMs) - int64(e.lastNowMs);
+            if (step < 0 || step > 5000) return;
+        }
+        if (e.lastNowMs != 0 && nowMs > e.lastNowMs && !e.paused) e.wanted += double(nowMs - e.lastNowMs) * e.speed;
+        e.lastNowMs = nowMs;
+        if (e.wanted < 0) e.wanted = 0;
+        uint w = uint(e.wanted);
+        if (w > nowMs) w = nowMs;
+        Dev::Write(e.rec + O_Rec_StartTime, uint(nowMs - w));
+        e.wantedAtWrite = double(w);
+        g_timeCtlWrites++;
+        g_turboHookTicks++;
+        return;
+    }
+}
+#endif
+
 bool TimeCtl_HookInstalled() { return !ClockNeedsHook || g_clockHook !is null; }
 
 bool TimeCtl_InstallHook() {
     if (g_clockHook !is null) return true;
 #if TURBO
-    // Nothing to install yet. Update() holds StartTime directly, which controls the ghost but leaves a
-    // frame-phase error the player sees as a stutter - see the KNOWN BUG note at the top of this file.
+    // Best effort: the Update() path is a working fallback, so a refused hook is not an error.
+    uint64 tptr = Dev::BaseAddress() + TurboTick_RVA;
+    string tbytes = "";
+    try {
+        for (uint i = 0; i < 5; i++) tbytes += (i > 0 ? " " : "") + Text::Format("%02X", Dev::ReadUInt8(tptr + i));
+    } catch { g_timeCtlLastErr = "playback tick site unreadable; holding the clock from Update() instead"; return true; }
+    if (tbytes != TurboTick_Prologue) {
+        g_timeCtlLastErr = "playback tick site mismatch (" + tbytes + "); holding the clock from Update() instead";
+        warn("Ghosts2: " + g_timeCtlLastErr);
+        return true;
+    }
+    // EAX carries nowMs here, so it must not be the hook's scratch register; EBX is untouched by this
+    // function. Padding 0: the relocated instruction is exactly the five bytes the jump needs.
+    @g_clockHook = Dev::Hook(tptr, 0, "OnTurboTickPlayback", Dev::PushRegisters::SSE, Dev::FreeRegister::Rbx);
+    if (g_clockHook is null) {
+        g_timeCtlLastErr = "Dev::Hook (playback tick) failed; holding the clock from Update() instead";
+        warn("Ghosts2: " + g_timeCtlLastErr);
+        return true;
+    }
+    trace("Ghosts2: playback tick hook installed at " + Text::FormatPointer(tptr));
     return true;
 #else
     uint64 ptr = Dev::BaseAddress() + UpdatePlaybackTime_RVA;
@@ -455,6 +519,9 @@ void TimeCtl_UpdateList(array<PluginGhost@>@ list) {
 // ahead, because the value written now is consumed by the engine's *next* tick. What is left over is only
 // the variation in tick length instead of the whole inter-clock offset.
 void TimeCtl_WriteClocks() {
+    // The hook drives every owned record once it has driven any of them, and it is exact where this is only
+    // a prediction, so stand down rather than fight it for the same field.
+    if (g_turboHookTicks > 0) return;
     for (uint i = 0; i < g_clock.Length; i++) {
         auto e = g_clock[i];
         if (e.rec == 0) continue;
@@ -514,7 +581,9 @@ void TimeCtl_Update(float dt) {
         if (g_clockHook !is null) TimeCtl_RemoveHook();
         return;
     }
-    if (!TimeCtl_HookInstalled() && g_timeCtlLastErr.Length == 0) TimeCtl_InstallHook();
+    // Try once, on both games. TimeCtl_HookInstalled() answers "can time control run", which on Turbo is
+    // true with or without the hook - asking it here meant the Turbo hook was never even attempted.
+    if (g_clockHook is null && g_timeCtlLastErr.Length == 0) TimeCtl_InstallHook();
     if (!TimeCtl_HookInstalled()) return;
     if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts);
     if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts);

@@ -168,6 +168,12 @@ namespace Ghosts2 {
         }
         o["timeCtlEntries"] = ents;
         o["timeCtlLastErr"] = g_timeCtlLastErr;
+        // The module base, so a caller can turn the absolute addresses in research notes into something it
+        // can read. Every hook site in this plugin is Dev::BaseAddress() + an RVA.
+        o["baseAddress"] = Text::Format("%llx", Dev::BaseAddress());
+#if TURBO
+        o["turboHookTicks"] = g_turboHookTicks;
+#endif
         o["lockAll"] = Lock_Enabled();
         o["camResets"] = g_camResets;
         o["clipDrops"] = g_clipDrops;
