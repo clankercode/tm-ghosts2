@@ -23,6 +23,12 @@ class PluginGhost {
 
     uint64 clockRec = 0;    // engine record whose clock we own (0 = engine drives it)
 
+    // Per-frame memo for TimeCtl_Resolve (see TimeControl.as). Resolving walks the race's entry and record
+    // arrays with guarded Dev reads, and one frame asks for the same ghost four to six times.
+    uint resolveFrame = 0;
+    bool resolveOk = false;
+    GhostSlot@ resolveSlot;
+
     // engine ghosts (CTrackManiaRace.RaceGhosts, classic race): no CGameGhostScript, identified by nod address
     bool engine = false;
     CGameCtnGhost@ ctn;

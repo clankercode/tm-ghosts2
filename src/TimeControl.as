@@ -208,6 +208,12 @@ class GhostSlot {
     // this plugin drives these two disagree by the frame-phase error, and that disagreement is the whole
     // stutter - so it has to be observable, or a measurement can only ever confirm our own intention.
     int engineGhostTime = -1;
+
+    void CopyFrom(GhostSlot@ o) {
+        entry = o.entry; rec = o.rec; ghostNod = o.ghostNod; instId = o.instId;
+        startTime = o.startTime; started = o.started; offsetMs = o.offsetMs;
+        ghostTime = o.ghostTime; engineGhostTime = o.engineGhostTime;
+    }
 }
 
 bool TimeCtl_ReadRecord(uint64 r, GhostSlot@ slot) {
@@ -279,8 +285,11 @@ bool TimeCtl_ResolveEngine(CTrackManiaRace@ race, uint64 ghostNod, GhostSlot@ sl
     return false;
 }
 
-bool TimeCtl_Resolve(PluginGhost@ pg, GhostSlot@ slot) {
-    if (pg is null || slot is null) return false;
+// Bumped once per TimeCtl_Update, so Update, Render and RenderInterface of the same frame share one answer.
+// Never 0: that is the "not resolved yet" value on a fresh PluginGhost.
+uint g_resolveFrame = 1;
+
+bool TimeCtl_ResolveUncached(PluginGhost@ pg, GhostSlot@ slot) {
     auto race = CurrentRace();
     if (race is null) return false;
     if (pg.engine) {
@@ -289,6 +298,28 @@ bool TimeCtl_Resolve(PluginGhost@ pg, GhostSlot@ slot) {
         return true;
     }
     return pg.instId != 0 && TimeCtl_ResolveScript(race, pg.instId, slot);
+}
+
+// Each resolve is O(entries + records) guarded Dev reads - every SafeU32/SafePtr is a try/catch'd read - and
+// a frame asks for the same ghost four to six times over: both TimeCtl_UpdateList passes, Lock_Update's walk
+// of the members, TimeCtl_Own per member, and a row per open tab. With ten ghosts that was over a thousand
+// guarded reads a frame, which is most of what Update() was costing. The answer cannot change inside a frame
+// - the engine rebuilds records at a spawn, between frames - so resolve once per ghost per frame.
+bool TimeCtl_Resolve(PluginGhost@ pg, GhostSlot@ slot) {
+    if (pg is null || slot is null) return false;
+    if (pg.resolveFrame == g_resolveFrame) {
+        if (!pg.resolveOk || pg.resolveSlot is null) return false;
+        slot.CopyFrom(pg.resolveSlot);
+        return true;
+    }
+    bool ok = TimeCtl_ResolveUncached(pg, slot);
+    pg.resolveFrame = g_resolveFrame;
+    pg.resolveOk = ok;
+    if (ok) {
+        if (pg.resolveSlot is null) @pg.resolveSlot = GhostSlot();
+        pg.resolveSlot.CopyFrom(slot);
+    }
+    return ok;
 }
 
 bool TimeCtl_Available() {
@@ -476,6 +507,9 @@ void TimeCtl_WriteClocks() {
 
 void TimeCtl_Update(float dt) {
     g_timeCtlUpdates++;
+    // New frame: everything resolved for the last one is stale. Bumped before any early return, so a frame
+    // that skips time control does not leave the previous frame's answers looking current.
+    if (++g_resolveFrame == 0) g_resolveFrame = 1;
     if (!S_TimeControl) {
         if (g_clockHook !is null) TimeCtl_RemoveHook();
         return;

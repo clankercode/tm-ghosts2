@@ -132,6 +132,8 @@ void Browse_Refresh() {
     }
     g_browseDirs.RemoveRange(0, g_browseDirs.Length);
     g_browseFiles.RemoveRange(0, g_browseFiles.Length);
+    g_browseDirNames.RemoveRange(0, g_browseDirNames.Length);
+    g_browseFileNames.RemoveRange(0, g_browseFileNames.Length);
     auto entries = IO::IndexFolder(g_browseDir, false);
     for (uint i = 0; i < entries.Length; i++) {
         string e = entries[i].Replace("\\", "/");
@@ -141,8 +143,10 @@ void Browse_Refresh() {
         // (so nothing could be loaded), and turned a click into "Folder not found: <the file>/".
         if (e.EndsWith("/")) {
             g_browseDirs.InsertLast(e);
+            g_browseDirNames.InsertLast(BaseName(e));
         } else if (!S_FilterGhostFiles || LooksLikeGhostFile(e)) {
             g_browseFiles.InsertLast(e);
+            g_browseFileNames.InsertLast(BaseName(e));
         }
     }
     Browse_RefreshFileInfo();
@@ -150,6 +154,12 @@ void Browse_Refresh() {
 
 // Who drove each listed replay, what they got, and whether it is even this map - resolved once per listing
 // rather than per frame (the row lookup is a scan of the whole replay index, and both lists are long).
+// Display strings for the listing, built once when it is read rather than per row per frame: the Autosaves
+// folder here holds 187 replays, and BaseName() on every one of them, every frame, is real cost in a
+// callback that runs at frame rate.
+array<string> g_browseFileNames;
+array<string> g_browseDirNames;
+
 array<string> g_browseFileWho;      // "nickname  0:12.34", or "" when the index does not know the file
 array<bool> g_browseFileForeign;    // positively identified as belonging to a different map
 string g_browseInfoMapUid = "";     // the map "foreign" was decided against; changes when you change map

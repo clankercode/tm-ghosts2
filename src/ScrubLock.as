@@ -20,6 +20,15 @@ PluginGhost@ Lock_Leader() {
     return m.Length > 0 ? m[0] : null;
 }
 
+// The leader out of a member list that has already been built, so a caller that needs both does not walk
+// every ghost twice (Lock_Update did, once inside Lock_Leader and once for the members themselves).
+PluginGhost@ Lock_LeaderOf(array<PluginGhost@>@ members) {
+    if (g_scrubGhost !is null) {
+        for (uint i = 0; i < members.Length; i++) if (members[i] is g_scrubGhost) return g_scrubGhost;
+    }
+    return members.Length > 0 ? members[0] : null;
+}
+
 // Turn the lock on (snapping every member to the leader's time / state) or off (members keep their clocks).
 void Lock_Set(bool on) {
     g_lockAll = on;
@@ -42,10 +51,10 @@ void Lock_Set(bool on) {
 // Per frame (from TimeCtl_Update): mirror the leader while it is under our control.
 void Lock_Update() {
     if (!Lock_Enabled() || !TimeCtl_Available()) return;
-    auto leader = Lock_Leader();
+    auto members = Lock_Members();
+    auto leader = Lock_LeaderOf(members);
     if (leader is null) return;
     ClockEntry@ le = leader.Controlled() ? Clock_Find(leader.clockRec) : null;
-    auto members = Lock_Members();
     for (uint i = 0; i < members.Length; i++) {
         auto m = members[i];
         if (m is leader) continue;

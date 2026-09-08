@@ -53,33 +53,46 @@ void DrawLoadTab() {
         return;
     }
     for (uint i = 0; i < g_browseDirs.Length; i++) {
-        if (UI::Selectable(Icons::FolderOpen + " " + BaseName(g_browseDirs[i]) + "##d" + i, false)) {
+        string dirName = i < g_browseDirNames.Length ? g_browseDirNames[i] : BaseName(g_browseDirs[i]);
+        if (UI::Selectable(Icons::FolderOpen + " " + dirName + "##d" + i, false)) {
             Browse_Goto(g_browseDirs[i]);
             break;
         }
     }
     UI::BeginDisabled(rules is null || g_busy);
-    for (uint i = 0; i < g_browseFiles.Length; i++) {
-        // A replay the game's index says belongs to another map: it would drive a line that does not fit
-        // this track, so it is refused (unless the setting allows it) and says so here rather than at the
-        // click. The metadata arrays are rebuilt with the listing, but stay defensive about the lengths.
-        bool foreign = i < g_browseFileForeign.Length && g_browseFileForeign[i];
-        string who = i < g_browseFileWho.Length ? g_browseFileWho[i] : "";
-        UI::PushID("f" + i);
-        UI::BeginDisabled(foreign && !S_AllowOtherMapGhosts);
-        if (UI::Button(Icons::PlusCircle + "##load")) Load_ReplayFile(g_browseFiles[i]);
-        UI::EndDisabled();
-        AddSimpleTooltip(foreign
-            ? "Driven on a different map. Loading -> \"Allow ghosts from other maps\" to load it anyway."
-            : "DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
-        UI::SameLine();
-        UI::AlignTextToFramePadding();
-        UI::Text((foreign ? "\\$888" : "") + BaseName(g_browseFiles[i]));
-        if (who.Length > 0 || foreign) {
+    // Only the rows on screen are drawn. A replays folder runs to a few hundred entries (187 in Autosaves
+    // here) and this callback runs at frame rate, so drawing every row cost about a millisecond a frame for
+    // rows nobody could see.
+    UI::ListClipper clip(g_browseFiles.Length);
+    while (clip.Step()) {
+        for (int r = clip.DisplayStart; r < clip.DisplayEnd; r++) {
+            uint i = uint(r);
+            // A replay the game's index says belongs to another map: it would drive a line that does not fit
+            // this track, so it is refused (unless the setting allows it) and says so here rather than at
+            // the click. The metadata arrays are rebuilt with the listing, but stay defensive about lengths.
+            bool foreign = i < g_browseFileForeign.Length && g_browseFileForeign[i];
+            string who = i < g_browseFileWho.Length ? g_browseFileWho[i] : "";
+            UI::PushID("f" + i);
+            UI::BeginDisabled(foreign && !S_AllowOtherMapGhosts);
+            if (UI::Button(Icons::PlusCircle + "##load")) Load_ReplayFile(g_browseFiles[i]);
+            UI::EndDisabled();
+            // Built only when the row is actually hovered: AddSimpleTooltip returns immediately if it is
+            // not, but AngelScript still evaluates the argument, so the concatenation happened for every
+            // drawn row every frame and was thrown away.
+            if (UI::IsItemHovered()) {
+                AddSimpleTooltip(foreign
+                    ? "Driven on a different map. Loading -> \"Allow ghosts from other maps\" to load it anyway."
+                    : "DataFileMgr.Replay_Load(" + g_browseFiles[i] + ")");
+            }
             UI::SameLine();
-            UI::Text("\\$888" + who + (foreign ? "  \\$fc4[another map]" : ""));
+            UI::AlignTextToFramePadding();
+            UI::Text((foreign ? "\\$888" : "") + (i < g_browseFileNames.Length ? g_browseFileNames[i] : BaseName(g_browseFiles[i])));
+            if (who.Length > 0 || foreign) {
+                UI::SameLine();
+                UI::Text("\\$888" + who + (foreign ? "  \\$fc4[another map]" : ""));
+            }
+            UI::PopID();
         }
-        UI::PopID();
     }
     UI::EndDisabled();
     if (g_browseDirs.Length == 0 && g_browseFiles.Length == 0) UI::TextDisabled("(nothing here)");
