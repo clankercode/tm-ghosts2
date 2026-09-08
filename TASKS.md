@@ -165,6 +165,24 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
       speed re-checked (1x/2x/0.5x = 3110/6200/1550 ms per 3 s); locked ghosts sit at spread 0. The prologue
       is byte-checked before patching and a mismatch falls back to the `Update()` path
 
+## Turbo spectate: grok's static read, not verified in game (2026-09-08)
+
+Reported over c2c from the Ghidra side (research `b45f457`). **None of this is tested; treat as leads.**
+
+- [ ] Cheaper target path: after `SetStartTimeAndActivate`, `rec+0x4` is a `CGameMobil*`, and
+      `RegisterGameMobil` writes a dense `GameMobilId` at `mobil+0x0C` (ctor leaves -1). Spectating that id
+      needs no instance id and no `ReplicaId` walk
+- [ ] `FindGameMobilById`'s "none" is **-1, not 0** — 0 is the local car. `TurboGhostMobilId` returning 0 on a
+      miss therefore *follows the player* if written to `FollowedGameMobilId`. Worth hardening even though
+      `CamTarget_ApplyTurbo` already refuses 0
+- [ ] Engine medal ghosts: `Race_RebuildGhostWrappers` `0x00ed8df0` calls `CreateFromGhost(..., instId = -1)`
+      into `race+0x59c` / count `+0x5a0`. The auto-inst free list is `mgr+0x400` (not `+0x24`). Slot 0 gives
+      `rec+0x24` instId 0, which *is* a valid `ReplicaId` (only `0x0FF00000` means none) — so `Spectate_Start`
+      and `TurboGhostMobilId` refusing 0 means those ghosts can never be spectated
+- [ ] `Activate` also runs `AttachMobil` / `FillFollowBox`, so a *started* engine ghost should have
+      `SceneMobil+0x84` populated and be Helico-safe — possibly the way past the
+      `CSceneMgrVehicleVis` gate recorded above
+
 ## Turbo ghosts missing from the list (fixed, 2026-09-08)
 
 - [x] Root cause (user report: "shows my ghost but not the bronze ghost that is also loaded"): two stacked
