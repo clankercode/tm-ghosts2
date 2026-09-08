@@ -210,6 +210,7 @@ PluginGhost@ Ghosts_Add(CGameGhostScript@ g, const string &in source, bool displ
 // are still on the start line; otherwise the pending restart is parked and offered as a button.
 uint g_spawnForAddAt = 0;    // Time::Now deadline, 0 = nothing pending
 bool g_restartOffered = false;   // an add is waiting for a restart the user has to ask for
+bool g_restartHeld = false;      // pending restart waiting for a run to exist (say it once, not every pump)
 const uint SpawnForAddCoalesceMs = 400;
 
 void Ghosts_RequestSpawnForAdd() {
@@ -217,7 +218,7 @@ void Ghosts_RequestSpawnForAdd() {
     g_spawnForAddAt = Time::Now + SpawnForAddCoalesceMs;
 }
 
-void Ghosts_CancelSpawnForAdd() { g_spawnForAddAt = 0; }
+void Ghosts_CancelSpawnForAdd() { g_spawnForAddAt = 0; g_restartHeld = false; }
 
 // "Mid-lap" = a lap worth protecting: spawned, at least one checkpoint crossed, and still being driven.
 // Neither half is enough on its own. The race clock is not a test - in solo it runs from the end of the
@@ -226,27 +227,26 @@ void Ghosts_CancelSpawnForAdd() { g_spawnForAddAt = 0; }
 // checkpoint count alone reports mid-lap while the car sits on the start line - hence the idle check.
 const uint MidLapIdleMs = 1500;
 bool Race_MidLap() {
-    auto rules = CurrentRules();
-    if (rules is null) return false;
-    string login = GetLocalLogin();
-    for (uint i = 0; i < rules.Players.Length; i++) {
-        auto p = rules.Players[i];
-        if (p is null || p.User is null || string(p.User.Login) != login) continue;
-        if (!p.IsSpawned || p.CurRace is null || p.CurRace.Checkpoints.Length == 0) return false;
-#if TURBO
-        return true;   // no IdleDuration on Turbo; Turbo has no rules script anyway, so this never runs
-#else
-        return p.IdleDuration < MidLapIdleMs;
-#endif
-    }
-    return false;
+    auto p = LocalPlayer();
+    if (p is null) return false;
+    if (!p.IsSpawned || p.CurRace is null || p.CurRace.Checkpoints.Length == 0) return false;
+    return PlayerIdleDuration(p) < MidLapIdleMs;
 }
 
 // Restart now, whatever the setting says (the Ghosts tab button and the scrubber's Respawn).
 bool Ghosts_RestartForAdds() {
     g_spawnForAddAt = 0;
     g_restartOffered = false;
-    if (Race_SpawnLocal(S_RespawnOnAddDelayMs, true)) { SetStatus("Restarting the run so the new ghost(s) start."); return true; }
+    g_restartHeld = false;
+    if (Race_SpawnLocal(S_RespawnOnAddDelayMs)) { SetStatus("Restarting the run so the new ghost(s) start."); return true; }
+    if (!Race_RunStarted()) {
+        // Nothing to restart yet, and asking anyway costs the player the screen they are on (see
+        // Race_RunStarted), so hold it instead of spending their state on a spawn the mode will discard.
+        g_restartHeld = true;
+        g_spawnForAddAt = Time::Now + SpawnForAddCoalesceMs;
+        SetStatus("Ghost added. It starts when you start your run.", true);
+        return false;
+    }
     SetStatus("The run could not be restarted - press Respawn to start the new ghost(s).", true, true);
     return false;
 }
@@ -263,6 +263,19 @@ void Ghosts_ExpireRestartOffer() {
 
 void Ghosts_PumpSpawnForAdd() {
     if (g_spawnForAddAt == 0 || Time::Now < g_spawnForAddAt) return;
+    if (!Race_RunStarted()) {
+        // Sitting behind a mode's pre-run screen (CampaignSolo parks the car on the track behind the map's
+        // challenge card). A spawn request from there takes the car away and leaves the card up, and the
+        // ghost would not start anyway - so hold the restart until there is a run to restart. It fires on
+        // the first pump after the player starts, while they are still on the line and it costs nothing.
+        if (!g_restartHeld) {
+            g_restartHeld = true;
+            SetStatus("Ghost added. It starts when you start your run.", true);
+        }
+        g_spawnForAddAt = Time::Now + SpawnForAddCoalesceMs;
+        return;
+    }
+    g_restartHeld = false;
     if (S_RespawnOnAdd == RespawnOnAdd::UnlessMidLap && Race_MidLap()) {
         // Parking the restart is the whole point here: taking a lap away to start a ghost is worse than the
         // ghost waiting for the next respawn.

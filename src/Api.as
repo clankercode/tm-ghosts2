@@ -58,6 +58,34 @@ MwId LocalUserId() {
     return MwId();
 }
 
+// The player this session drives. Matching on GetLocalLogin() is right on a signed-in ManiaPlanet, but an
+// offline install (every Turbo install without a Ubisoft session) reports an empty login and would then match
+// nobody - so fall back to the only player there is. Solo has exactly one.
+CTmRaceRulesPlayer@ LocalPlayer() {
+    auto rules = CurrentRules();
+    if (rules is null || rules.Players.Length == 0) return null;
+    string login = GetLocalLogin();
+    if (login.Length > 0) {
+        for (uint i = 0; i < rules.Players.Length; i++) {
+            auto p = rules.Players[i];
+            if (p !is null && p.User !is null && string(p.User.Login) == login) return p;
+        }
+    }
+    return rules.Players.Length == 1 ? rules.Players[0] : null;
+}
+
+// The local player's display name (GetLocalLogin() is the login; ghost nicknames are display names).
+string LocalPlayerName() {
+    auto rules = CurrentRules();
+    if (rules is null) return "";
+    string login = GetLocalLogin();
+    for (uint i = 0; i < rules.Users.Length; i++) {
+        auto u = rules.Users[i];
+        if (u !is null && u.Login == login) return u.Name;
+    }
+    return rules.Users.Length > 0 && rules.Users[0] !is null ? string(rules.Users[0].Name) : "";
+}
+
 // Raw address of a nod (temporarily stores the handle in a scratch nod's first slot and reads it back).
 // Turbo is 32-bit (MANIA32), so the slot is 4 bytes there and a u64 read would drag in the next field.
 uint64 NodPointer(CMwNod@ nod) {
@@ -148,36 +176,58 @@ bool Race_CanAddGhosts() {
     return rules !is null && rules.Players.Length > 0;
 }
 
-// Turbo never has a rules script, so the whole RaceGhost_* surface is missing rather than merely refusing.
+// A playground with no mode driving it has no rules nod, and with it none of the RaceGhost_* surface.
 bool HasRulesScript() { return CurrentRules() !is null; }
+
+// The mode script running the race ("TimeAttack", "CampaignSolo", "TMC_CampaignSolo", ...), for diagnostics:
+// how a mode reacts to a spawn request is the one thing that differs between races that otherwise look alike.
+string CurrentModeName() {
+    auto rules = CurrentRules();
+    return rules is null ? "" : string(rules.ServerModeName);
+}
+
+bool LocalPlayerSpawned() {
+    auto p = LocalPlayer();
+    return p !is null && p.IsSpawned;
+}
 
 // Suffix for a rejected add: name the usual cause instead of leaving the user with a bare rejection.
 string AddRejectedWhy() {
-#if TURBO
-    if (CurrentRules() is null) return " - " + TurboNoRulesHint + ".";
-#endif
+    if (CurrentRules() is null) return " - " + NoModeHint + ".";
     return Race_CanAddGhosts() ? "." : " - " + ClassicRaceHint + ".";
 }
 
 const string ClassicRaceHint = "this race is the legacy solo playground (CTrackManiaRace1P), whose rules script has no players - RaceGhost_Add is refused there and only the ghosts picked in the game's own opponent dialog play. Start the map through a mode script (the title pack's Solo/Play flow) to load ghosts into it";
 
-// Script modes only: unspawn + respawn the local player (a RaceGhost_Add'ed ghost only starts on the next spawn).
-bool Race_RespawnLocal(uint delayMs = 1500) { return Race_SpawnLocal(delayMs, true); }
+// Script modes only: restart the local player's run (a RaceGhost_Add'ed ghost only starts on the next spawn).
+bool Race_RespawnLocal(uint delayMs = 1500) { return Race_SpawnLocal(delayMs); }
 
-// (Re)spawn the local player. `unspawn` first = a clean restart (ghosts restart with the spawn); without it the
-// engine treats it as a respawn of the current vehicle, which is enough to end the spectator camera clip.
-bool Race_SpawnLocal(uint delayMs, bool unspawn) {
+// Restart the local player's run. SpawnPlayer on an already-spawned player is enough: the engine rebuilds the
+// ghost playback records from the pending add list on that spawn, measured on MP4 in both TimeAttack and
+// CampaignSolo and on Turbo (2026-09-08 - add a ghost with RaceGhost_Add, call this, and the new ghost goes
+// from "queued" to a live playback time within a frame).
+//
+// Do NOT unspawn first. It looks like the cleaner restart and it does work in TimeAttack, but CampaignSolo -
+// the mode behind the game's own SOLO campaign, i.e. what most people play - owns spawning: UnspawnPlayer
+// takes the car away and drops the map's challenge card back over the track, and from there every SpawnPlayer
+// is discarded on the same frame, so the only way back into the run is the card itself. On Turbo it is worse
+// again: the playground falls to the arcade attract mode and never comes back.
+bool Race_SpawnLocal(uint delayMs) {
     auto rules = CurrentRules();
-    if (rules is null) return false;
-    string login = GetLocalLogin();
-    for (uint i = 0; i < rules.Players.Length; i++) {
-        auto p = rules.Players[i];
-        if (p is null || p.User is null || string(p.User.Login) != login) continue;
-        if (unspawn) rules.UnspawnPlayer(p);
-        rules.SpawnPlayer(p, 0, int(rules.Now) + int(delayMs));
-        return true;
-    }
-    return false;
+    auto p = LocalPlayer();
+    if (rules is null || p is null || !Race_RunStarted()) return false;
+    rules.SpawnPlayer(p, 0, int(rules.Now) + int(delayMs));
+    return true;
+}
+
+// Is there a run to restart? Not the same question as "is the player spawned". MP4's CampaignSolo parks the
+// car on the track behind the map's challenge card (the GOLD/SILVER/BRONZE/PERSONAL RECORD panel) with
+// IsSpawned true and RaceStartTime 0, and spawning from there takes the car away and leaves the card up until
+// you pick a row - measured on A03, 2026-09-08. A started run always has a real RaceStartTime (TimeAttack
+// sets it during the countdown, before the lights go green), so this is the honest gate for a restart.
+bool Race_RunStarted() {
+    auto p = LocalPlayer();
+    return p !is null && p.IsSpawned && p.RaceStartTime > 0;
 }
 
 // Vtable sanity check before treating an address as a nod (Reflection on a non-nod crashes the game):

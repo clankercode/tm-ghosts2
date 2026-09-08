@@ -1,13 +1,14 @@
 # Ghosts2
 
-Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania 2**, from an
-[Openplanet](https://openplanet.dev) plugin. A clone of the TM2020 plugin
+Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania 2** *and*
+**Trackmania Turbo**, from an [Openplanet](https://openplanet.dev) plugin. A clone of the TM2020 plugin
 [Ghosts++](https://openplanet.dev/plugin/ghostspp) rebuilt on the MP4 engine.
 
 > ## 📦 Download
 > **Grab the `.op` file from the [Releases page](https://github.com/clankercode/tm-ghosts2/releases/latest)**
-> and drop it into your `Openplanet4/Plugins` folder (Documents › ManiaPlanet › Openplanet4 › Plugins on
-> Windows). Reload plugins from the Openplanet menu, or restart the game.
+> and drop it into your plugins folder — `Documents › ManiaPlanet › Openplanet4 › Plugins` for
+> ManiaPlanet 4, `Documents › TrackmaniaTurbo › OpenplanetTurbo › Plugins` for Turbo. Reload plugins from
+> the Openplanet menu, or restart the game. The same `.op` runs on both games.
 
 ![Following the pack: Follow camera behind the slowest ghost, scrubber at the bottom](docs/img/hero.png)
 
@@ -29,6 +30,8 @@ Load, scrub, lock, spectate and save race ghosts in **ManiaPlanet 4 / TrackMania
 - **Save** any loaded ghost back to a replay file, remove ghosts one by one or all at once, and keep
   ghosts alive across the mode script's periodic `RaceGhost_RemoveAll` and plugin reloads.
 - **Scriptable** — exports for other plugins and a command pack for scripted control.
+- **Runs on Trackmania Turbo too** — loading, the map's record table, playback control and the lock all
+  work there; see [Trackmania Turbo](#trackmania-turbo) for the one feature that does not yet.
 
 | Follow camera, Cam 2 | Internal camera (Cam 3) |
 |---|---|
@@ -133,9 +136,12 @@ works there. `./build.sh dev` also reloads the `tm-ghosts2-mp4pack` command pack
 plugin unloads anything that depends on it.
 `tools/tm2-smoke.sh` runs a live smoke test against the game through the command pack: adds actually
 starting, the replay browser, a leaderboard round trip, playback and the lock, spectate/stop and the
-camera reset, removal, and hook health. It adapts to the race type, so it is also useful in the legacy
-solo playground where ghosts cannot be added.
-`tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack.
+camera reset, removal, and hook health. It adapts to what the race can do, so it is also useful in the
+legacy solo playground where ghosts cannot be added, at a `CampaignSolo` challenge card where there is no
+run to restart, and on Turbo where spectating is refused by design (`GAME=turbo tools/tm2-smoke.sh`).
+Current: **21/21 on ManiaPlanet 4** (TimeAttack and a started `CampaignSolo` run) and **19/19 on Turbo**.
+`tools/showcase-shots.sh` and `tools/readme-shots.sh` regenerate the screenshots through the command pack
+(`GAME=turbo SHOTS=ui tools/showcase-shots.sh <instId>` for the Turbo set).
 
 ## How it works (engine notes)
 
@@ -143,6 +149,15 @@ solo playground where ghosts cannot be added.
   `Dev::Hook`) and sets each record's StartTime from the exact tick time, so paused cars do not
   vibrate and seeks land exactly. Resync hands the clock back; a respawn rebuilds the records, which
   releases any owned clock. The setting *Time control* turns the hook off.
+- **Starting an added ghost is a plain `SpawnPlayer`, never an unspawn.** `RaceGhost_Add` only queues the
+  ghost; the engine builds its playback record at the next spawn. `SpawnPlayer` on an already-spawned
+  player is enough to trigger that, on both games and in every mode tried. Unspawning first looks like the
+  cleaner restart and does work in TimeAttack, but `CampaignSolo` — the mode behind the game's own SOLO
+  campaign, i.e. what most people play — owns spawning: `UnspawnPlayer` takes the car away, drops the
+  map's challenge card back over the track, and discards every later `SpawnPlayer` on the same frame.
+  Ghosts2 also asks whether there is a run to restart at all: `CampaignSolo` parks the car on the track
+  behind that card with `IsSpawned` true but `RaceStartTime` 0, and spawning from there costs you the
+  screen you are on. An add made there is **held**, not dropped, and fires the moment you start your run.
 - **Auto re-add** — the stock solo mode calls `RaceGhost_RemoveAll()` on every phase transition.
   Ghosts2 keeps the `CGameGhostScript@` handles and puts them back, rate limited, giving up after a
   few failed attempts so it never fights the mode script. `RaceGhost_Add` takes effect at the next
@@ -166,33 +181,63 @@ notes; engine build `2019-11-19_18_50`, Openplanet 1.29.14).
 
 ## Trackmania Turbo
 
-Ghosts2 compiles, loads and runs on Turbo, but the port is **not finished**, and the reason is worth
-stating plainly: **Turbo has no mode script.** `GetApp().PlaygroundScript` is null for the entire life of
-a Turbo solo race, and the game ships no `*.Script.txt` modes at all - so there is no
-`CTrackManiaRaceRules`, and with it no `RaceGhost_Add`, no `SpawnPlayer`, and no
-`CGamePlaygroundUIConfig` spectator controls. Everything Ghosts2 does on ManiaPlanet 4 goes through that
-nod.
+Ghosts2 runs on Trackmania Turbo, and almost everything works. **Correction to the 0.4.0 notes: Turbo
+*does* have a mode script.** The earlier reading came from the legacy `CTrackManiaRace1P` playground,
+which is equally ruleless on ManiaPlanet 4. Launch a map through the campaign flow (INSERT COIN →
+CAMPAIGN → SOLO CAMPAIGN → a series → a map) and the playground is a `CTrackManiaRaceNew` driven by a
+real `CTrackManiaRaceRules` with `ServerModeName` `TMC_CampaignSolo`, the whole `RaceGhost_*` surface,
+`SpawnPlayer`, `UIManager`, `DataMgr` and `ScoreMgr`.
 
-What is in place today:
+| Playback tab: three medal ghosts at mixed speeds | Ghosts tab |
+|---|---|
+| ![Turbo playback tab](docs/img/turbo-playback-tab.png) | ![Turbo ghosts tab](docs/img/turbo-ghosts-tab.png) |
 
-- one `src/Compat.as` holding every difference between the two games;
-- the loading and leaderboard paths written against Turbo's own managers (`CGameDataManagerScript` and
-  `CGameScoreAndLeaderBoardManagerScript`, reached off the menus' title ManiaApp): `GhostRetrieve` for
-  replay files, `Campaign_GetMapRecordGhost` + `GhostRetrieveFromTaskResult` for the PB,
-  `RetrieveRecords` -> `Records[i].GhostUrl` for the map's record table, `StoreRecordName` for saving;
-- honest refusals rather than wrong pokes: the playback clock and the camera-target hook report "not
-  implemented on Trackmania Turbo yet", and `LooksLikeNod` refuses every raw pointer on Turbo (its
-  vtable signature is the 64-bit ManiaPlanet one).
+![Turbo Load tab: medal buttons, the map's record table, the ghost folder browser](docs/img/turbo-load-tab.png)
 
-What is still missing, and how it will work: adding a ghost goes through `CTrackManiaRace.RaceGhosts` -
-a non-const `MwFastBuffer` that the engine copies into its active ghost list at race init with **no
-validation at all** - plus a restart; playback control writes the record's StartTime directly (nothing
-rewrites it per frame on Turbo, so no hook is needed); the camera still has to be mapped. The measured
-detail is in `openplanet/research/turbo/2026-09-08-Turbo-Setup.md` and `TASKS.md`.
+What works on Turbo, all measured live on campaign map 003:
 
-Testing it needs a ghost, and this development install has none: it runs an offline Uplay stub, so
-Turbo's medal and record ghosts - which are served online - cannot be fetched, and the only network-free
-source is a lap somebody has actually driven.
+- **Loading** — author / gold / silver / bronze medal ghosts, and *Load my PB*. Gold, silver and bronze
+  come from `DataMgr.Ghosts`, which the engine fills when the campaign map loads: offline, instantly,
+  no web task. The author ghost is never preloaded, so Ghosts2 pulls it out of the map's record table
+  instead (see below) — it costs one fetch and then behaves like any other ghost.
+- **The map's record table as a leaderboard** — `DataMgr.RetrieveRecords(MapInfo, UserId)` fills
+  `DataMgr.Records` with the medal times *and* your own record, each row carrying a `GhostUrl` that
+  `GhostRetrieve` accepts. It is local and works with no network at all, so the Load tab calls it
+  **Map records** rather than pretending there is a world leaderboard.
+- **Adding ghosts, and the restart that starts them** — `RaceGhost_Add` plus a `SpawnPlayer`, exactly as
+  on ManiaPlanet 4.
+- **Playback control with no hook at all.** Nothing on Turbo rewrites a ghost record's start time per
+  frame, so Ghosts2 simply holds `record + 0x0c = rules.Now - wanted` from its own `Update()`. Measured:
+  a paused ghost holds its millisecond over 3 s, seeks land exactly, 2x measures 2.1x.
+- **The lock, the scrubber, removal, re-add and the save path** (Turbo has no replay-file writer, so
+  saving goes through `DataMgr.StoreRecordName` — which writes into the map's own record table as *your*
+  record, so Ghosts2 asks for confirmation first).
+
+What does **not** work yet:
+
+- **Spectating a ghost.** Turbo's `CGamePlaygroundUIConfig` has no `SpectatorForcedTarget` /
+  `ForceSpectator` at all. The camera set is reachable and writable
+  (`CurrentPlayground.GameTerminals[0].CameraSet.CamsMaster`, `ManagedCams[i].FollowedGameMobilId`) and
+  the writes land — but a race ghost's instance id is not a `GameMobilId` (the local player's own mobil
+  reports id 0), so the view does not move. Rather than write an id nothing follows and quietly detach
+  your camera, Ghosts2 refuses, hides the camera controls and says why. The plumbing is in place for the
+  moment that mapping is known.
+- **The engine's own race ghosts** (the medal opponents the game itself puts in the race) list but have
+  no playback record Ghosts2 can resolve, so they cannot be scrubbed. Load the same medals through the
+  Load tab and they are fully drivable.
+- **`.Ghost.Gbx` files.** A Turbo profile's `MapsGhosts/` folder holds ~20-byte index stubs, not ghost
+  data, and `GhostRetrieve` takes urls rather than file paths. The browser still opens there (there is no
+  Replays folder on Turbo) and says so plainly rather than failing silently.
+
+Two things about Turbo that are easy to lose an afternoon to:
+
+- **Turbo pauses whenever its window loses focus** — arcade-port behaviour. The playground clock freezes
+  behind an INSERT COIN / CAMPAIGN panel. Any timing measurement needs the window focused, or you will
+  measure a stopped clock and conclude your pause is perfect.
+- **`UnspawnPlayer` is destructive there** — it drops the playground to the arcade attract mode and never
+  comes back. Ghosts2 never calls it (on either game; see *How it works*).
+
+Measured detail: `openplanet/research/turbo/2026-09-08-Turbo-Setup.md`.
 
 ## Known limitations
 
@@ -213,6 +258,12 @@ source is a lap somebody has actually driven.
   and spectated as usual. A script-driven race (`CTrackManiaRaceNew`) takes ghosts normally.
 - **The game's own race ghosts cannot be taken out of the race**; Ghosts2 checks whether a removal landed
   and tells you when it did not, rather than dropping the row and letting the ghost reappear.
+- **In `CampaignSolo`, a ghost added at the map's challenge card waits for your start.** That screen is
+  not a run — the car is parked on the track behind it — and asking the engine for a spawn from there
+  takes the car away. Ghosts2 holds the restart and fires it as soon as you begin, so the ghost starts
+  with you; the status line says which of the two happened.
+- **On Turbo, spectating a ghost and scrubbing the engine's own race ghosts are not available**, and
+  `.Ghost.Gbx` files cannot be loaded. See [Trackmania Turbo](#trackmania-turbo).
 - **Your race HUD stays on screen while you spectate**, showing a frozen chrono. Setting the
   `OverlayHide*` fields (even `OverlayHideAll`) on `rules.UIManager.UIAll` does not affect it - the
   writes stick but the HUD does not change - so the solo HUD is driven from somewhere else. Still open.
@@ -260,6 +311,38 @@ Verified against `~/Openplanet4/Openplanet.h` + `Openplanet4.json` (engine build
    `RaceGhost_GetStartTime` / `IsVisible`; the nickname+time match is only used for the classic race list.
 4. `Replay_Save` accepts a bare filename and writes under the game's `Replays` folder; `Replay_Load` reads it back.
 5. Releasing a task result while holding its `CGameGhostScript@` keeps the ghost usable.
+
+### Trackmania Turbo deltas
+
+Verified against `~/OpenplanetTurbo/OpenplanetTurbo.json` (32-bit build, Openplanet 1.29.14). Turbo's
+`CTrackManiaRaceRules` is nearly the ManiaPlanet one; `src/Compat.as` holds every difference.
+
+| Missing on Turbo | What Ghosts2 does instead |
+|---|---|
+| `RaceGhost_IsVisible` | vanished-ghost detection runs on `RaceGhost_GetStartTime` + add-list membership |
+| `RaceGhost_GetPosition` | not needed by any current feature |
+| `CTmRaceRulesPlayer.IdleDuration` / `.Speed` | mid-lap detection tracks `.Position` itself (20 cm threshold) |
+| `CGamePlaygroundUIConfig.SpectatorForcedTarget` / `ForceSpectator` / `SpectatorForceCameraType` | nothing yet — spectating is refused, see above |
+| `DataFileMgr` (the whole manager) | `CGameDataManagerScript` off `rules.DataMgr` / the title ManiaApp |
+| `ScoreMgr.Map_GetMultiAsyncLevelRecordGhost` | `DataMgr.Ghosts` for gold/silver/bronze, `DataMgr.Records[i].GhostUrl` for the author |
+| `ScoreMgr.MapLeaderBoard_GetPlayerList` | `DataMgr.RetrieveRecords(MapInfo, UserId)` → `DataMgr.Records` |
+| `DataFileMgr.Replay_Load` / `Replay_Save` | `DataMgr.GhostRetrieve(url)` / `DataMgr.StoreRecordName(...)` |
+| `CGameGhostScript.Result` | `.RaceResult` |
+
+Ghost record layout, measured live (stride and field offsets differ from MP4 — `src/TimeControl.as` has
+both sets): add entries at `race+0x0c4/0x0c8` (script) and `race+0x3ac/0x3b0` (live), playback records at
+`race+0x3b8`, classic wrappers at `race+0x59c/0x5a0`; a record is `+0x04` ghost, `+0x0c` StartTime
+(`0xffffffff` = not started), `+0x10` started, `+0x1c` displayAsPB, `+0x24` instance id — and there is no
+elapsed field, the engine computes it on demand.
+
+Hazards found the hard way, so nobody repeats them:
+
+- A **generic Reflection sweep** over Turbo nods hangs Openplanet's script engine (game alive, plugin
+  socket dead, RemoteBuild refuses). Walk `MwClassInfo.GetMember(name)` by name instead.
+- `CTrackManiaMenus.MenuCampaignChallenges_Solo()` hangs it the same way.
+- `DialogQuickChooseGhostOpponents()` kills the whole process — on **ManiaPlanet**, not just Turbo.
+- `CGameManiaApp::LayerCustomEvent` wants `MwFastBuffer<wstring>`, not `string[]`; `openplanet-lsp`
+  accepts the latter and the game rejects it.
 
 ## Credits
 

@@ -62,22 +62,65 @@ Setup, hashes and API findings: `research/turbo/2026-09-08-Turbo-Setup.md`.
 - [x] Turbo control plugin: **`tm-mp4-control` itself now builds for Turbo** (`GAME=turbo ./build.sh dev`, socket **34532**, client `tools/turbocall.py`; MP4-only commands answer "not on Turbo" instead of failing to compile). New commands `maps`, `records`, `replays`, `race_set`, `turbo_probe`, `ghost_retrieve`, `menu_call`, `fid_copy`, `ghost_push`. `PlayMap` works through `ManiaTitleFlowScriptAPI` (Turbo's name for MP4's `ManiaTitleControlScriptAPI`)
 - [x] Ghosts2 compiles, loads and runs on Turbo (`src/Compat.as` shim layer; `GAME=turbo ./build.sh dev`; verified live through the `ghosts2.*` pack on 34532), with the loading and leaderboard paths rewritten against Turbo's `DataMgr` / `ScoreMgr`
 
-### The Turbo blocker: there is no mode script
+### Turbo does have a mode script (the 0.4.0 "blocker" was a misreading)
 
-**`GetApp().PlaygroundScript` is null for the whole life of a Turbo solo race** (`CTrackManiaRace1P`;
-polled every 2 s across a full map load, 14/14 null), and Turbo ships no `*.Script.txt` mode scripts at
-all — checked in the exe and both title packs. So Turbo has no `CTrackManiaRaceRules` at runtime and
-therefore no `RaceGhost_Add/Remove`, no `SpawnPlayer`, no `UIManager`/`CGamePlaygroundUIConfig` (so no
-`ForceSpectator`/`SpectatorForcedTarget`), and no rules-side `DataMgr`/`ScoreMgr`. `DataMgr` and `ScoreMgr`
-survive on the menus' title ManiaApp (`MenuManager.MenuCustom_CurrentManiaApp`) and are used from there.
+**Corrected 2026-09-08.** The earlier "`PlaygroundScript` is null for the whole life of a Turbo solo race"
+measurement was taken in the legacy `CTrackManiaRace1P` playground - which is equally ruleless on
+ManiaPlanet 4, so it said nothing about Turbo. Enter a map through the campaign flow (INSERT COIN →
+CAMPAIGN → SOLO CAMPAIGN → series → map; scripted in `research/turbo/tools/turbo-enter-campaign.sh`) and
+the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`, `ServerModeName`
+`TMC_CampaignSolo`, with the whole `RaceGhost_*` surface, `SpawnPlayer`, `UIManager`, `DataMgr` and
+`ScoreMgr`.
 
-- [ ] (grok, RE on :18744) **Q5** — the ghost-manager chain reachable from the `CTrackManiaRace` nod with no rules object: pending `mgr+0xc4/+0xc8`, live keys `mgr+0x3ac/+0x3b0`, record pointers `mgr+0x3b8`, record `+0x0` ghost data / `+0xc` StartTime (`-1` = not started). This decides whether Ghosts2 can do anything at all on Turbo
-- [ ] (grok) **Q6** — does the record rebuild iterate `CTrackManiaRace.RaceGhosts`, and what does it validate? Openplanet's `MwFastBuffer` binding exposes `Add`/`Remove`, and `RaceGhosts` is non-const, so `RaceGhosts.Add(ghost)` + a restart would be the Turbo add path with no script API at all
-- [ ] (grok) **Q3** — spectate/camera with no `CGamePlaygroundUIConfig`: where the spectated target id lives, the resolver to hook, the vehicle-cam-id field. Turbo has no `CGameCameraSystem` on the script surface
-- [ ] Turbo playback clock: hold `record+0xc = now - wanted` from `Update()` (grok: `RaceGhost_ComputeElapsed` has exactly one caller, so nothing rewrites StartTime per frame — no hook needed). Blocked on Q5
-- [ ] Turbo medal ghosts: `DataMgr.GhostRetrieve(":Medal:<Bronze|Silver|Gold|Author>")` **hard-crashes the game** in every state tested; not wired up until that is understood (grok Q7)
-- [ ] **Environment blocker for testing:** this Turbo prefix runs the local Uplay R1 stub, so there is no Ubisoft session — `LocalUser` null, `MainUserLogged` false, `RetrieveRecords` returns `Finished_Ok` with zero rows, and the 44 "Author Medal" `ReplayRecordInfos` are 107-byte stubs whose ghosts live online. Nothing can be fetched, so nothing can be tested. **Unblocked either by signing in to Ubisoft in the Turbo prefix, or by a human driving one lap** (that produces `CGameCtnPlayground.PlayerRecordedGhost`, the only network-free ghost source)
-- [ ] Two ways to crash Turbo, both costing a restart, both recorded in the research note: `DataMgr.GhostRetrieve(":Medal:...")`, `CTrackManiaMenus.DialogQuickChooseGhostOpponents()` with a race live, and reading `CGameCtnReplayRecordInfo.ChallengeId.GetName()` or `.Fid.FullFileName`
+- [x] Turbo ghost loading: gold/silver/bronze from `DataMgr.Ghosts` (preloaded with the campaign map,
+      offline, instant), author from `DataMgr.Records[i].GhostUrl` via `GhostRetrieve`, PB from the same
+      record table (falling back to `Campaign_GetMapRecordGhost`)
+- [x] Turbo leaderboard: `DataMgr.RetrieveRecords(MapInfo, UserId)` → `DataMgr.Records`, presented as
+      **Map records** (local, no zone, single page)
+- [x] Turbo add + restart: `RaceGhost_Add` then `SpawnPlayer`. **Never `UnspawnPlayer`** - it drops the
+      playground to the arcade attract mode and never returns
+- [x] Turbo playback clock with no hook: hold `record+0x0c = rules.Now - wanted` from `Update()`. Measured
+      on campaign 003: pause holds the millisecond over 3 s, seek exact, 2x = 2.1x. Record layout in
+      `research/turbo/2026-09-08-Turbo-Setup.md` and `src/TimeControl.as`
+- [x] Turbo smoke test: `GAME=turbo tools/tm2-smoke.sh`, **19/19**
+- [x] Turbo screenshots in `docs/img/turbo-*.png`, README section rewritten
+- [x] `DataMgr.GhostRetrieve(":Medal:<name>")` is still a hard crash and is not used; the medal ghosts come
+      from `DataMgr.Ghosts` and the record table instead, which needs no such url
+- [x] The "no ghosts to test with" blocker is gone: the campaign flow preloads the medal ghosts locally and
+      `RetrieveRecords` returns the map's five rows offline, Max's own PB included
+- [ ] (grok) **Turbo spectating** - the one missing feature. `CGamePlaygroundUIConfig` has no
+      `SpectatorForcedTarget`/`ForceSpectator`/`SpectatorForceCameraType`. The camera set is reachable and
+      writable (`CurrentPlayground.GameTerminals[0].CameraSet.CamsMaster`, `CurrentCam`,
+      `ManagedCams[i].FollowedGameMobilId`) and the writes land, but a race ghost's instance id is **not** a
+      `GameMobilId` (the local player's own mobil reports 0). Needed: the ghost → `GameMobilId` mapping.
+      `src/CameraTarget.as` has the plumbing behind `TurboCameraTargetResolved`; flip it when the mapping
+      is known
+- [ ] Turbo engine race ghosts (the game's own medal opponents) list with `instId 0` and no resolvable
+      playback record. MP4 resolves them from `race+0x1080/0x1088`; on Turbo `race+0x59c/0x5a0` are
+      *wrappers* rather than records, so the record pointer is probably one indirection away
+- [ ] Turbo `.Ghost.Gbx` loading is not possible: a profile's `MapsGhosts/*.Ghost.Gbx` are ~20-byte index
+      stubs, `GhostRetrieve` takes urls not paths, and `Fids::GetUser` will not resolve them. The browser
+      says so rather than failing silently
+- [ ] Ways to hang or kill Turbo, all costing a restart, all recorded in the research note: a generic
+      Reflection sweep over Turbo nods (hangs the script engine - walk `MwClassInfo.GetMember(name)` by
+      name instead), `CTrackManiaMenus.MenuCampaignChallenges_Solo()` (same hang),
+      `DataMgr.GhostRetrieve(":Medal:...")`, and reading `CGameCtnReplayRecordInfo.ChallengeId.GetName()` /
+      `.Fid.FullFileName`. `DialogQuickChooseGhostOpponents()` kills the process on **ManiaPlanet** too -
+      that one is not Turbo-specific
+- [ ] Turbo pauses whenever its window loses focus (arcade-port behaviour). Any timing measurement needs
+      the window focused, or you measure a stopped clock
+
+### ManiaPlanet 4 findings from the same pass
+
+- [x] **`UnspawnPlayer` is never needed and is harmful.** `SpawnPlayer` on an already-spawned player is
+      what makes the engine rebuild the ghost playback records, in TimeAttack and `CampaignSolo` alike.
+      Unspawning in `CampaignSolo` takes the car away, drops the map's challenge card back over the track,
+      and every later `SpawnPlayer` is discarded on the same frame
+- [x] **`CampaignSolo` parks the car behind the challenge card** with `IsSpawned` true and
+      `RaceStartTime` 0. That is not a run: a spawn request there costs the player that screen. Ghosts2
+      gates the restart on `Race_RunStarted()` and holds a pending restart until a run exists
+- [x] `GetLocalLogin()` returns `""` on this install even though authenticated web calls succeed, so the
+      local-player lookup falls back to the only player in a solo race
 
 ## Conventions
 

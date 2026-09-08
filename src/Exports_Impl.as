@@ -125,6 +125,9 @@ namespace Ghosts2 {
         o["timeCtlUpdates"] = g_timeCtlUpdates;
         o["timeCtlWrites"] = g_timeCtlWrites;
         o["timeCtlHook"] = g_clockHook !is null;
+        // Turbo needs no clock hook at all (nothing there rewrites a ghost record's start time per frame), so
+        // "is the hook object there" is the wrong question for a caller: this is the one that travels.
+        o["timeCtlReady"] = TimeCtl_HookInstalled();
         o["timeCtlOwned"] = g_clock.Length;
         auto ents = Json::Array();
         for (uint i = 0; i < g_clock.Length; i++) {
@@ -143,9 +146,19 @@ namespace Ghosts2 {
         o["clipDrops"] = g_clipDrops;
         o["clipDropLastErr"] = g_clipDropLastErr;
         o["camHook"] = g_camHook !is null;
+        o["camReady"] = CamTarget_Ready();
         o["camForcedId"] = g_camForcedId;
         o["camHookWrites"] = g_camHookWrites;
         o["camLastErr"] = g_camLastErr;
+        // Why a pending restart has or has not fired yet: the difference between "the add is waiting" and
+        // "the add was parked to save your lap" is invisible from the ghost list alone.
+        o["modeName"] = CurrentModeName();
+        o["playerSpawned"] = LocalPlayerSpawned();
+        o["runStarted"] = Race_RunStarted();
+        o["midLap"] = Race_MidLap();
+        o["restartOffered"] = g_restartOffered;
+        o["restartHeld"] = g_restartHeld;
+        o["spawnForAddIn"] = g_spawnForAddAt == 0 ? -1 : int(g_spawnForAddAt) - int(Time::Now);
         return o;
     }
 

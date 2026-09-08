@@ -2,10 +2,68 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.5.0 - "Turbo Had a Script All Along"
+
+- 2026-09-08: **Correction to 0.4.0: Turbo does have a mode script.** The "no mode script at all" reading
+  came from the legacy `CTrackManiaRace1P` playground, which is equally ruleless on ManiaPlanet 4. Enter a
+  map through the campaign flow and the playground is a `CTrackManiaRaceNew` driven by a real
+  `CTrackManiaRaceRules` (`ServerModeName` `TMC_CampaignSolo`) with the whole `RaceGhost_*` surface,
+  `SpawnPlayer`, `UIManager`, `DataMgr` and `ScoreMgr`. Everything built on that assumption is now
+  rebuilt on the real thing: **adding ghosts, restarting to start them, playback control, the lock, the
+  scrubber, removal, re-add and saving all work on Turbo.** Live smoke test: 19/19.
+- 2026-09-08: **Playback control on Turbo needs no hook.** Nothing there rewrites a ghost record's start
+  time per frame, so Ghosts2 holds `record + 0x0c = rules.Now - wanted` from its own `Update()`. Measured
+  on campaign 003: a paused ghost holds its millisecond over 3 s, seeks land exactly, 2x measures 2.1x.
+  A ghost whose clock Ghosts2 owns now also *reports* the time it is being held at rather than
+  recomputing it from a race clock that has moved on since the last write - that lag alone made a held
+  ghost look like it was creeping forward by tens of milliseconds.
+- 2026-09-08: **Never unspawn to restart a run.** `SpawnPlayer` on an already-spawned player is enough to
+  make the engine rebuild the ghost playback records, in every mode tried on both games - the older claim
+  that the unspawn was required was wrong. And the unspawn is actively harmful: in `CampaignSolo` (the
+  mode behind the game's own SOLO campaign) it takes the car away, drops the map's challenge card back
+  over the track and discards every later `SpawnPlayer` on the same frame; on Turbo it drops the
+  playground to the arcade attract mode and never comes back.
+- 2026-09-08: **An add made before your run has started is held, not dropped.** `CampaignSolo` parks the
+  car on the track behind the map's challenge card with `IsSpawned` true but `RaceStartTime` 0; asking for
+  a spawn from there costs you that screen and starts nothing. Ghosts2 now checks whether there is a run
+  to restart at all, holds the restart while there is not, and fires it the moment you begin - so a ghost
+  loaded at the card starts with you. This was the last failing check in the MP4 smoke test.
+- 2026-09-08: **`Load author ghost` works on Turbo.** Turbo never preloads an author ghost with the map,
+  but the map's record table has an Author row whose `GhostUrl` `GhostRetrieve` accepts, so Ghosts2 falls
+  back to a records fetch for any medal the map did not preload.
+- 2026-09-08: The Turbo Load tab tells the truth about what it is showing: **Map records** instead of
+  "Leaderboard (World)" (there is no zone and no second page), your own record row is labelled with your
+  name instead of coming back blank, and the paging buttons are gone.
+- 2026-09-08: **Saving on Turbo asks first.** There is no replay-file writer, so a save is
+  `DataMgr.StoreRecordName` - which writes the ghost into the map's own record table as *your* record.
+  That is not something to do on a stray click, so it now takes a confirmation.
+- 2026-09-08: Turbo's ghost folder browser explains itself: a profile's `MapsGhosts/` files are ~20-byte
+  index stubs rather than ghost data and `GhostRetrieve` takes urls, not paths - so a click on one says
+  that instead of "found nothing".
+- 2026-09-08: **Controls that cannot do anything are gone rather than dead.** Where the camera cannot be
+  pointed at a ghost (Turbo), the spectate eye, *Stop spectating*, *Reset camera* and the scrubber's whole
+  camera group are hidden or disabled with the reason, and the Ghosts tab carries one line saying why. The
+  ghost counter reads "N engine, M ours" instead of the ambiguous "N in race".
+- 2026-09-08: `ghosts2.state` reports `modeName`, `playerSpawned`, `runStarted`, `midLap`, `restartHeld`,
+  `restartOffered`, `spawnForAddIn`, `timeCtlReady` and `camReady` - the difference between "the add is
+  waiting" and "the add was parked to save your lap" was invisible from the ghost list alone, and it cost
+  an hour to work out from the outside.
+- 2026-09-08: `tools/tm2-smoke.sh` takes `GAME=turbo`, asserts the right thing in each state instead of
+  one shape everywhere (a started run must give every added ghost a playback record; at a challenge card
+  the car must still be there afterwards and the restart must be held; where spectating is unavailable it
+  must be refused rather than silently no-op), scopes the record and sync checks to ghosts Ghosts2 loaded,
+  and clears the ghost list first so leftovers from an earlier run cannot fail it.
+- 2026-09-08: `tools/showcase-shots.sh` and `tools/readme-shots.sh` take `GAME=turbo`, crop to whatever
+  size the game window actually is, and skip the spectator-camera shots where spectating is unavailable.
+- 2026-09-08: README rewritten around what is actually true of Turbo, with Turbo screenshots, the Turbo
+  API delta table, the measured record layout, and the four ways to hang or kill the game found today.
+
 ## 0.4.0 - "Scriptless in Turbo"
 
 - 2026-09-08: **Ghosts2 builds, loads and runs on Trackmania Turbo** (`GAME=turbo ./build.sh dev`). A new `src/Compat.as` holds every place the two games differ, and the loading and leaderboard paths are rewritten against Turbo's own managers: `CGameDataManagerScript.GhostRetrieve` for replay files, `ScoreMgr.Campaign_GetMapRecordGhost` + `GhostRetrieveFromTaskResult` for the personal best, `DataMgr.RetrieveRecords` -> `Records[i].GhostUrl` for the map's record table (Turbo's leaderboard), `DataMgr.StoreRecordName` for saving. Both managers are reached off the menus' title ManiaApp, because - see below - Turbo has no rules script to hang them on.
-- 2026-09-08: **The Turbo headline: Turbo has no mode script at all.** `GetApp().PlaygroundScript` is null for the whole life of a solo race (measured 14/14 across a full map load), and the game ships no `*.Script.txt` modes. So Turbo has no `CTrackManiaRaceRules`: no `RaceGhost_Add`, no `SpawnPlayer`, no `CGamePlaygroundUIConfig` spectator controls. The two memory features - the playback clock and the camera-target hook - now say "not implemented on Trackmania Turbo yet" instead of poking 64-bit ManiaPlanet addresses at a 32-bit game, and `LooksLikeNod` refuses every raw pointer there rather than hand an unverified address to Reflection. What replaces the script API is mapped out in `research/turbo/2026-09-08-Turbo-Setup.md` and TASKS.md; adding ghosts will go through `CTrackManiaRace.RaceGhosts`, which the engine copies into its active list at race init with no validation at all (grok's RE).
+- 2026-09-08: ~~**The Turbo headline: Turbo has no mode script at all.**~~ **This was wrong - see 0.5.0.**
+  Turbo does have a mode script; the reading below came from the legacy `CTrackManiaRace1P` playground.
+  The original entry is kept for the record: `GetApp().PlaygroundScript` is null for the whole life of a solo race (measured 14/14 across a full map load), and the game ships no `*.Script.txt` modes. So Turbo has no `CTrackManiaRaceRules`: no `RaceGhost_Add`, no `SpawnPlayer`, no `CGamePlaygroundUIConfig` spectator controls. The two memory features - the playback clock and the camera-target hook - now say "not implemented on Trackmania Turbo yet" instead of poking 64-bit ManiaPlanet addresses at a 32-bit game, and `LooksLikeNod` refuses every raw pointer there rather than hand an unverified address to Reflection. What replaces the script API is mapped out in `research/turbo/2026-09-08-Turbo-Setup.md` and TASKS.md; adding ghosts will go through `CTrackManiaRace.RaceGhosts`, which the engine copies into its active list at race init with no validation at all (grok's RE).
 - 2026-09-08: **Adding a ghost no longer eats the lap you are driving.** The restart that makes a queued ghost start is now skipped while you are actually mid-lap (spawned, past a checkpoint, and not idle); the Ghosts tab offers a "Restart now" button instead, and the status line says the lap was left alone. Setting Loading -> Restart the run when a ghost is added is now Never / Unless mid-lap (default) / Always. The race clock is deliberately not the test: in solo it runs from the end of the countdown whether or not the car moved, so timing on it would suppress the restart exactly when it is wanted.
 - 2026-09-08: **Stop spectating leaves a lap alone too**, on the same rule: mid-lap it releases the engine's spectator camera clip instead of restarting you (Spectate -> Restart when you stop spectating is now the same three-way setting).
 - 2026-09-08: `./build.sh dev` reloads the `tm-ghosts2-mp4pack` command pack as well - reloading the plugin unloads anything that depends on it, which silently broke the smoke test on every dev cycle.

@@ -40,6 +40,7 @@ void DrawLoadTab() {
     UI::EndDisabled();
     UI::SameLine();
     if (UI::Button(Icons::Home + " Replays")) Browse_Goto(DefaultReplaysFolder());
+    AddSimpleTooltip(ReplaysFolderHint);
     UI::SameLine();
     UI::SetNextItemWidth(UI::GetContentRegionAvail().x);
     bool changed = false;
@@ -76,20 +77,23 @@ void DrawLeaderboardSection(CTrackManiaRaceRules@ rules) {
     // First draws for this map: fetch its board by itself (the cache was dropped on the map change).
     if (rules !is null && CurrentMapUid().Length > 0 && Lb_WantAutoFetch()) Lb_AutoFetch();
     UI::AlignTextToFramePadding();
-    UI::Text("Leaderboard (" + Lb_Zone() + ")");
+    UI::Text(LbIsZoned ? "Leaderboard (" + Lb_Zone() + ")" : "Map records");
     UI::SameLine();
     UI::BeginDisabled(rules is null || g_lbBusy);
     if (UI::Button(Icons::Globe + " Fetch")) Lb_Fetch(0);
     AddSimpleTooltip("ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), mapUid, \"\", zone, offset, count)");
-    UI::SameLine();
-    uint count = Math::Clamp(S_LeaderboardCount, 1, 100);
-    UI::BeginDisabled(g_lbOffset == 0 || g_lbEntries.Length == 0);
-    if (UI::Button(Icons::ChevronLeft + "##lb-prev")) Lb_Fetch(g_lbOffset >= count ? g_lbOffset - count : 0);
-    UI::EndDisabled();
-    UI::SameLine();
-    UI::BeginDisabled(g_lbEntries.Length < count);
-    if (UI::Button(Icons::ChevronRight + "##lb-next")) Lb_Fetch(g_lbOffset + count);
-    UI::EndDisabled();
+    // Turbo's board is a single local table: paging controls there would only ever refetch the same rows.
+    if (LbIsZoned) {
+        UI::SameLine();
+        uint count = Math::Clamp(S_LeaderboardCount, 1, 100);
+        UI::BeginDisabled(g_lbOffset == 0 || g_lbEntries.Length == 0);
+        if (UI::Button(Icons::ChevronLeft + "##lb-prev")) Lb_Fetch(g_lbOffset >= count ? g_lbOffset - count : 0);
+        UI::EndDisabled();
+        UI::SameLine();
+        UI::BeginDisabled(g_lbEntries.Length < count);
+        if (UI::Button(Icons::ChevronRight + "##lb-next")) Lb_Fetch(g_lbOffset + count);
+        UI::EndDisabled();
+    }
     UI::EndDisabled();
     UI::SameLine();
     UI::Text("\\$888" + (g_lbBusy ? "fetching ..." : g_lbStatus));

@@ -20,7 +20,22 @@ bool g_browseInit = false;
 
 string DefaultReplaysFolder() {
     if (S_ReplaysFolder.Length > 0) return NormalizeDir(S_ReplaysFolder);
+#if TURBO
+    // Turbo has no Replays folder. It saves a lap as <user folder>/<profile guid>/MapsGhosts/<n>.Ghost.Gbx,
+    // so open the first MapsGhosts we can find and fall back to the user folder itself - never a path that
+    // does not exist, which just showed "Folder not found" with an empty browser.
+    string root = NormalizeDir(IO::FromUserGameFolder(""));
+    auto entries = IO::IndexFolder(root, false);
+    for (uint i = 0; i < entries.Length; i++) {
+        string e = NormalizeDir(entries[i]);
+        if (!e.EndsWith("/")) continue;
+        string cand = e + "MapsGhosts/";
+        if (IO::FolderExists(cand)) return cand;
+    }
+    return root;
+#else
     return NormalizeDir(IO::FromUserGameFolder("Replays"));
+#endif
 }
 
 string NormalizeDir(const string &in path) {
@@ -101,7 +116,15 @@ void LoadReplayInner(const string &in path) {
     if (dm is null) { SetStatus("No DataMgr.", true, true); return; }
     SetStatus("Loading " + BaseName(path) + " ...");
     auto g = dm.GhostRetrieve(path);
-    if (g is null) { SetStatus("GhostRetrieve found nothing at " + path + " (" + tostring(dm.LatestResult) + ").", true, true); return; }
+    if (g is null) {
+        // Every ghost file under a Turbo profile's MapsGhosts/ is a ~20-byte index stub, not ghost data, and
+        // GhostRetrieve takes urls rather than file paths - so this is expected for those, and saying only
+        // "found nothing" would send someone hunting for a bug that is not there.
+        SetStatus("Turbo will not load " + BaseName(path) + " (" + tostring(dm.LatestResult) + "). Its "
+                  "MapsGhosts files are index stubs, not ghost data - use Map records, the medal buttons or "
+                  "Load my PB instead.", true, true);
+        return;
+    }
     uint deadline = Time::Now + 20000;
     while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
     if (g.DataState != CGameGhostScript::EDataState::Ready) {
@@ -167,14 +190,118 @@ void Load_MedalCoro(const string &in levelStr) {
     g_busy = false;
 }
 
+string MedalName(uint level) {
+    if (level >= 4) return "author";
+    if (level == 3) return "gold";
+    if (level == 2) return "silver";
+    return "bronze";
+}
+
+#if TURBO
+// Find the medal ghost the engine loaded with the map. Match on the medal time first (the nicknames are
+// localised, the times are not), then fall back to the nickname for a map with no medal times set.
+CGameGhostScript@ Turbo_FindMedalGhost(uint level) {
+    auto map = CurrentMap();
+    int wanted = -1;
+    if (map !is null) {
+        if (level >= 4) wanted = int(map.TMObjective_AuthorTime);
+        else if (level == 3) wanted = int(map.TMObjective_GoldTime);
+        else if (level == 2) wanted = int(map.TMObjective_SilverTime);
+        else wanted = int(map.TMObjective_BronzeTime);
+    }
+    auto ghosts = DataMgrGhosts();
+    if (wanted > 0) {
+        for (uint i = 0; i < ghosts.Length; i++) {
+            auto r = GhostResult(ghosts[i]);
+            if (r !is null && int(r.Time) == wanted) return ghosts[i];
+        }
+    }
+    string needle = MedalName(level);
+    for (uint i = 0; i < ghosts.Length; i++) {
+        if (Text::StripFormatCodes(string(ghosts[i].Nickname)).ToLower().Contains(needle)) return ghosts[i];
+    }
+    return null;
+}
+
+// The medal time this map asks for, or -1 when the map does not set one.
+int Turbo_MedalTime(uint level) {
+    auto map = CurrentMap();
+    if (map is null) return -1;
+    if (level >= 4) return int(map.TMObjective_AuthorTime);
+    if (level == 3) return int(map.TMObjective_GoldTime);
+    if (level == 2) return int(map.TMObjective_SilverTime);
+    return int(map.TMObjective_BronzeTime);
+}
+
+// Pull a medal ghost out of the map's record table (DataMgr.Records) - the only route to the author ghost on
+// Turbo, since the engine never preloads one. Matches the record's time against the map's medal time, then
+// falls back to the row's name. Blocks on the fetch and on the download, so call it from a coroutine.
+CGameGhostScript@ Turbo_RetrieveMedalFromRecords(uint level) {
+    auto dm = DataMgr();
+    auto map = CurrentMap();
+    if (dm is null || map is null || map.MapInfo is null) return null;
+    int wanted = Turbo_MedalTime(level);
+    string needle = MedalName(level);
+    SetStatus("Looking for the " + needle + " ghost in this map's records ...");
+    dm.RetrieveRecords(map.MapInfo, LocalUserId());
+    uint deadline = Time::Now + 20000;
+    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline) yield();
+    if (dm.LatestResult != CGameDataManagerScript::EResult::Finished_Ok) return null;
+    string url;
+    for (uint i = 0; i < dm.Records.Length; i++) {
+        auto r = dm.Records[i];
+        if (r is null || string(r.GhostUrl).Length == 0) continue;
+        bool hit = (wanted > 0 && int(r.Time) == wanted)
+                   || Text::StripFormatCodes(string(r.Name)).ToLower().Contains(needle);
+        if (hit) { url = r.GhostUrl; break; }
+    }
+    if (url.Length == 0) return null;
+    auto g = dm.GhostRetrieve(url);
+    if (g is null) return null;
+    deadline = Time::Now + 20000;
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    return g.DataState == CGameGhostScript::EDataState::Ready ? g : null;
+}
+#endif
+
+#if TURBO
+// The player's own record ghost, as the engine loaded it with the map: the one whose nickname is the
+// local player's, and which is not one of the map's medal ghosts.
+CGameGhostScript@ Turbo_FindOwnGhost() {
+    string me = Text::StripFormatCodes(LocalPlayerName()).ToLower();
+    if (me.Length == 0) return null;
+    auto ghosts = DataMgrGhosts();
+    for (uint i = 0; i < ghosts.Length; i++) {
+        if (Text::StripFormatCodes(string(ghosts[i].Nickname)).ToLower() == me) return ghosts[i];
+    }
+    return null;
+}
+#endif
+
 void LoadMedalInner(uint level) {
 #if TURBO
-    // Turbo's ScoreMgr has no Map_GetMultiAsyncLevelRecordGhost. The medal ghosts are the 44 official
-    // "Author Medal" replays in CGameCtnApp.ReplayRecordInfos, and DataMgr.GhostRetrieve(":Medal:<name>")
-    // is meant to reach them - but that call hard-crashes Turbo in every state tested so far
-    // (research/turbo/2026-09-08-Turbo-Setup.md), so it is not wired up until the crash is understood.
-    SetStatus("Medal ghosts are not available on Turbo yet: the engine's :Medal: ghost loader crashes the "
-              "game, and Turbo's ScoreMgr has no medal-ghost request. Level " + level + " not loaded.", true, true);
+    // Turbo's ScoreMgr has no Map_GetMultiAsyncLevelRecordGhost, and DataMgr.GhostRetrieve(":Medal:<name>")
+    // hard-crashes the game (research/turbo/2026-09-08-Turbo-Setup.md). Neither is needed: in a campaign
+    // race the engine has already loaded the map's Gold / Silver / Bronze ghosts into DataMgr.Ghosts, so
+    // the medal is right there - offline, instantly, no web task at all. The author medal is the one
+    // exception; Turbo never ships an author ghost with the map.
+    auto g = Turbo_FindMedalGhost(level);
+    if (g !is null) {
+        if (Ghosts_Add(g, "Medal " + level) !is null) SetStatus("Added the " + MedalName(level) + " ghost.", true);
+        else SetStatus("Could not add the " + MedalName(level) + " ghost" + AddRejectedWhy(), true, true);
+        return;
+    }
+    // The author medal is never among the ghosts loaded with the map, but the map's record table has an
+    // Author row whose GhostUrl GhostRetrieve accepts - so the author ghost is reachable after all, it just
+    // costs a records fetch. Same route for any other medal the map did not preload.
+    auto viaRecords = Turbo_RetrieveMedalFromRecords(level);
+    if (viaRecords !is null) {
+        if (Ghosts_Add(viaRecords, "Medal " + level) !is null) SetStatus("Added the " + MedalName(level) + " ghost.", true);
+        else SetStatus("Could not add the " + MedalName(level) + " ghost" + AddRejectedWhy(), true, true);
+        return;
+    }
+    SetStatus("No " + MedalName(level) + " ghost for this map: it is not among the ghosts loaded with the "
+              "map, and the map's record table has no matching row.", true);
 #else
     auto rules = CurrentRules();
     if (rules is null || rules.ScoreMgr is null) {
@@ -207,7 +334,15 @@ void LoadMedalInner(uint level) {
 
 void LoadPbInner() {
 #if TURBO
-    // Turbo: Campaign_GetMapRecordGhost gives a ghost *handle* task, which DataMgr turns into a ghost.
+    // The engine loads the player's own record for the map alongside the medal ghosts, so try that first:
+    // it is instant and it is the record the game itself shows. Only fall back to the web task (which is
+    // what Campaign_GetMapRecordGhost is) when there is no local copy.
+    auto local = Turbo_FindOwnGhost();
+    if (local !is null) {
+        if (Ghosts_Add(local, "PB") !is null) SetStatus("Added your personal best ghost.", true);
+        else SetStatus("Could not add your personal best ghost" + AddRejectedWhy(), true, true);
+        return;
+    }
     auto sm = ScoreMgr();
     auto dm = DataMgr();
     if (sm is null || dm is null) { SetStatus("No ScoreMgr / DataMgr.", true, true); return; }

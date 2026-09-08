@@ -2,14 +2,28 @@
 # Showcase screenshots for the README, staged through the tm-mp4-control pack. Needs a race with the plugin's
 # ghosts loaded (9 leaderboard ghosts on A01 when this was written). Writes docs/img/*.png (menu bar cropped off).
 #   tools/showcase-shots.sh <slowest-ghost-instId> [mid-pack-instId] [restore-x restore-y]
+#   GAME=turbo SHOTS=ui tools/showcase-shots.sh <instId>   Turbo: writes docs/img/turbo-*.png
+# SHOTS=ui skips the spectator-camera shots, which is what Turbo needs (it has no ghost spectating yet).
 set -euo pipefail
 cd "$(dirname "$0")/.."
 M="../tm-mp4-control/tools/mp4call.py"
 SHOT="../tm-mp4-control/tools/mp-screenshot.sh"
+GAME="${GAME:-mp4}"
+case "$GAME" in
+  mp4)   export MP4_CONTROL_PORT=34531 MP_WINDOW_NAME='^ManiaPlanet$';     PFX="" ;;
+  turbo) export MP4_CONTROL_PORT=34532 MP_WINDOW_NAME='^TrackmaniaTurbo$'; PFX="turbo-" ;;
+  *) echo "unknown GAME=$GAME (mp4|turbo)" >&2; exit 2 ;;
+esac
 slow="${1:?instId of the slowest ghost (the pack is ahead of it)}"; mid="${2:-$slow}"; rx="${3:-1350}"; ry="${4:-0}"
 tmp="$(mktemp -d)"; mkdir -p docs/img
 c() { python3 "$M" "$@" >/dev/null; }
-shot() { "$SHOT" "$tmp/$1.png" >/dev/null 2>&1; magick "$tmp/$1.png" -crop 1600x878+0+22 "docs/img/$1.png"; }
+# Does this game let the camera follow a ghost at all? Turbo does not yet, and the plugin refuses there.
+CAM_READY="$(python3 "$M" ghosts2.state | python3 -c "import json,sys; print(json.load(sys.stdin)['data']['camReady'])")"
+spec() { [[ "$CAM_READY" == "True" ]] && c "$@" || true; }
+# Crop the window's own menu bar (22 px) off the top; the window size is whatever the game is running at.
+geom() { xdotool getwindowgeometry "$(xdotool search --name "$MP_WINDOW_NAME" | head -1)" | awk '/Geometry/ {print $2}'; }
+WGEOM="$(geom)"; WW="${WGEOM%x*}"; WH="${WGEOM#*x}"
+shot() { "$SHOT" "$tmp/$1.png" >/dev/null 2>&1; magick "$tmp/$1.png" -crop "${WW}x$((WH-22))+0+22" "docs/img/$PFX$1.png"; }
 
 c ghosts2.show_window visible=false
 c ghosts2.lb_fetch offset=0   # async; the Load tab shot below needs the table filled
@@ -37,13 +51,13 @@ i=0; for id in $(python3 "$M" ghosts2.list | python3 -c "import sys,json; print(
   case $i in 0) c ghosts2.speed instId=$id speed=2;; 1) c ghosts2.speed instId=$id speed=0.25;; 2) c ghosts2.pause instId=$id paused=true;; *) c ghosts2.pause instId=$id paused=false;; esac
   i=$((i+1))
 done
-c ghosts2.spectate instId="$mid"; sleep 1.5
+spec ghosts2.spectate instId="$mid"; sleep 1.5
 c ghosts2.seek instId="$mid" ms=16000; sleep 0.8
 c ghosts2.show_window visible=true tab=playback x=60 y=60; sleep 1.6; shot playback-tab
 # 6. Load tab (leaderboard fetched beforehand), 7. Ghosts tab
 c ghosts2.show_window visible=true tab=load; sleep 1.6; shot load-tab
 c ghosts2.show_window visible=true tab=ghosts; sleep 1.6; shot ghosts-tab
-c ghosts2.stop_spectating respawn=false
+spec ghosts2.stop_spectating respawn=false
 c ghosts2.lock all=true; c ghosts2.pause instId="$slow" paused=true
 c ghosts2.show_window visible=true x="$rx" y="$ry"
 rm -rf "$tmp"; ls -la docs/img

@@ -11,19 +11,28 @@ void DrawGhostsTab() {
     UI::BeginDisabled(rules is null);
     if (UI::Button(Icons::Trash + " Remove all")) Ghosts_RemoveAll();
     UI::EndDisabled();
-    UI::SameLine();
-    if (g_specActive) {
-        if (UI::Button(Icons::StopCircle + " Stop spectating")) Spectate_Stop();
-    } else {
-        UI::BeginDisabled(true);
-        UI::Button(Icons::StopCircle + " Stop spectating");
-        UI::EndDisabled();
+    // Where the camera cannot be pointed at a ghost at all, both camera buttons are dead weight: say why
+    // once instead of showing two controls that can never do anything.
+    string camWhy = CamTarget_WhyNotReady();
+    if (camWhy.Length == 0) {
+        UI::SameLine();
+        if (g_specActive) {
+            if (UI::Button(Icons::StopCircle + " Stop spectating")) Spectate_Stop();
+        } else {
+            UI::BeginDisabled(true);
+            UI::Button(Icons::StopCircle + " Stop spectating");
+            UI::EndDisabled();
+        }
+        UI::SameLine();
+        if (UI::Button(Icons::VideoCamera + " Reset camera")) CamTarget_ResetToLocal();
+        AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
     }
     UI::SameLine();
-    if (UI::Button(Icons::VideoCamera + " Reset camera")) CamTarget_ResetToLocal();
-    AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
-    UI::SameLine();
-    UI::Text("\\$888" + race.RaceGhosts.Length + " in race, " + g_ghosts.Length + " ours");
+    UI::Text("\\$888" + race.RaceGhosts.Length + " engine, " + g_ghosts.Length + " ours");
+    AddSimpleTooltip("Ghosts the game itself put in the race, and ghosts loaded by Ghosts2.");
+    if (camWhy.Length > 0) {
+        UI::TextWrapped("\\$888" + Icons::VideoCamera + " " + camWhy + ".");
+    }
 
     DrawRestartOffer();
     UI::Separator();
@@ -120,10 +129,13 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         UI::TableNextColumn();
         UI::BeginDisabled(rules is null);
         bool isSpec = g_specActive && g_specInstId == pg.instId && pg.instId != 0;
+        string specWhy = CamTarget_WhyNotReady();
+        UI::BeginDisabled(specWhy.Length > 0);
         if (UI::Button(isSpec ? Icons::Eye + "##spec" : Icons::EyeSlash + "##spec")) {
             if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
         }
-        AddSimpleTooltip(isSpec ? "Stop spectating" : "Spectate (SpectatorForcedTarget)");
+        UI::EndDisabled();
+        AddSimpleTooltip(specWhy.Length > 0 ? specWhy : (isSpec ? "Stop spectating" : "Spectate (SpectatorForcedTarget)"));
         UI::SameLine();
         if (UI::Button(Icons::Refresh + "##readd")) {
             pg.gaveUp = false;
@@ -134,10 +146,22 @@ void DrawPluginGhostsTable(CTrackManiaRaceRules@ rules) {
         UI::SameLine();
         UI::BeginDisabled(g_busy);
         UI::BeginDisabled(pg.ghost is null);
-        if (UI::Button(Icons::FloppyO + "##save")) Save_Ghost(pg.ghost, SuggestedSaveName(pg));
+        if (UI::Button(Icons::FloppyO + "##save")) {
+            // Saving is a file write on MP4 but a write into the map's own record table on Turbo, where
+            // storing someone else's ghost as your record is not something to do on a stray click.
+            if (SaveNeedsConfirm) UI::OpenPopup("g2-save-confirm");
+            else Save_Ghost(pg.ghost, SuggestedSaveName(pg));
+        }
         UI::EndDisabled();
         UI::EndDisabled();
-        AddSimpleTooltip("Save as " + SuggestedSaveName(pg) + " (DataFileMgr.Replay_Save)");
+        AddSimpleTooltip(SaveHint(SuggestedSaveName(pg)));
+        if (UI::BeginPopup("g2-save-confirm")) {
+            UI::TextWrapped(SaveConfirmText(pg.DisplayName()));
+            if (UI::Button("Store##g2-save-yes")) { Save_Ghost(pg.ghost, SuggestedSaveName(pg)); UI::CloseCurrentPopup(); }
+            UI::SameLine();
+            if (UI::Button("Cancel##g2-save-no")) UI::CloseCurrentPopup();
+            UI::EndPopup();
+        }
         UI::SameLine();
         if (UI::Button(Icons::Times + "##rm")) @toRemove = pg;
         AddSimpleTooltip("Remove from race and stop tracking");
@@ -171,9 +195,11 @@ void DrawPlaybackTab() {
     }
     AddSimpleTooltip("Give every clock back to the game");
     UI::EndDisabled();
-    UI::SameLine();
-    if (UI::Button(Icons::VideoCamera + " Reset camera##pb")) CamTarget_ResetToLocal();
-    AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
+    if (CamTarget_WhyNotReady().Length == 0) {
+        UI::SameLine();
+        if (UI::Button(Icons::VideoCamera + " Reset camera##pb")) CamTarget_ResetToLocal();
+        AddSimpleTooltip("Point the camera back at your car if it is still following a ghost");
+    }
     UI::SameLine();
     UI::AlignTextToFramePadding();
     UI::Text("\\$888" + members.Length + " started");
@@ -214,12 +240,15 @@ void DrawPlaybackRows(array<PluginGhost@>@ list, const string &in idPrefix) {
 
         UI::TableNextColumn();
         bool isSpec = g_specActive && g_specInstId != 0 && g_specInstId == pg.instId;
-        UI::BeginDisabled(pg.instId == 0 || (!isSpec && !CamTarget_GhostHasVis(pg)));
+        string specWhy = CamTarget_WhyNotReady();
+        UI::BeginDisabled(specWhy.Length > 0 || pg.instId == 0 || (!isSpec && !CamTarget_GhostHasVis(pg)));
         if (UI::Button((isSpec ? "\\$8f8" + Icons::Eye : Icons::EyeSlash) + "##spec")) {
             if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
         }
         UI::EndDisabled();
-        AddSimpleTooltip(isSpec ? "Stop spectating" : (CamTarget_GhostHasVis(pg) ? "Spectate this ghost" : "No playback right now (seek it back or restart)"));
+        AddSimpleTooltip(specWhy.Length > 0 ? specWhy
+                         : (isSpec ? "Stop spectating"
+                            : (CamTarget_GhostHasVis(pg) ? "Spectate this ghost" : "No playback right now (seek it back or restart)")));
         UI::SameLine();
         UI::BeginDisabled(t < 0);
         bool scrubOpen = g_scrubGhost is pg;

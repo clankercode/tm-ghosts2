@@ -52,7 +52,15 @@ void Lb_OnMapChanged() {
     g_lbAutoNextAt = 0;
 }
 
+#if TURBO
+// Turbo's board is the map's own record table (medals + your record), read locally - there is no zone to
+// pick and no second page, so naming a zone here would be a lie the UI then repeats.
+const bool LbIsZoned = false;
+string Lb_Zone() { return "this map"; }
+#else
+const bool LbIsZoned = true;
 string Lb_Zone() { return S_LeaderboardZone.Length == 0 ? "World" : S_LeaderboardZone; }
+#endif
 
 void Lb_Fetch(uint offset) {
     if (g_lbBusy) return;
@@ -90,8 +98,12 @@ void LbFetchInner(uint offset) {
         LbEntry e;
         e.rank = r.Rank > 0 ? r.Rank : i + 1;
         e.login = "";
-        e.name = Text::OpenplanetFormatCodes(string(r.Name));
-        e.plainName = Text::StripFormatCodes(string(r.Name));
+        // Your own record comes back with an empty name; an unlabelled row reads as a broken entry.
+        string rn = string(r.Name);
+        if (Text::StripFormatCodes(rn).Length == 0) rn = LocalPlayerName();
+        if (rn.Length == 0) rn = "(your record)";
+        e.name = Text::OpenplanetFormatCodes(rn);
+        e.plainName = Text::StripFormatCodes(rn);
         e.score = r.Time;
         e.fileName = r.GhostName;
         e.url = r.GhostUrl;

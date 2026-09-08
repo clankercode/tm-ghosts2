@@ -24,6 +24,42 @@ string g_camLastErr = "";
 const uint64 O_CamSys_CamId = 0x180;
 uint g_camForcedCamId = 0;        // 0 = leave the engine's choice
 
+#if TURBO
+// Turbo has neither CGamePlaygroundUIConfig.SpectatorForcedTarget nor a CGameCameraSystem on the script
+// surface, so there is nothing to hook and nothing to force through the UI config. What it does have is the
+// terminal's camera set - CGameTerminal.CameraSet.CamsMaster - whose managed cameras each expose a writable
+// FollowedGameMobilId, in the same id space the race hands out to ghost instances (0x0fe0xxxx). So the
+// Turbo camera is a plain script write, re-applied each frame because the engine re-evaluates the target.
+CGameControlCameraMaster@ TurboCamsMaster() {
+    auto pg = App().CurrentPlayground;
+    if (pg is null || pg.GameTerminals.Length == 0) return null;
+    auto term = pg.GameTerminals[0];
+    if (term is null || term.CameraSet is null) return null;
+    return term.CameraSet.CamsMaster;
+}
+
+// Aim every managed camera at `instId`, or back at the local vehicle when it is CamId_None.
+// Measured 2026-09-08: the writes land (every managed camera reports the ghost's id back) but the view does
+// not move, because a RaceGhost instance id is NOT a GameMobilId - the local player's own mobil reports
+// GameMobilId 0. Until the ghost's real mobil id is known, spectating is refused rather than left as a
+// silent no-op that also detaches the camera. The plumbing below is correct and ready for that id.
+const bool TurboCameraTargetResolved = false;
+
+bool CamTarget_ApplyTurbo(uint instId) {
+    auto master = TurboCamsMaster();
+    if (master is null) { g_camLastErr = "no camera set on the terminal"; return false; }
+    g_camLastErr = "";
+    uint id = instId == CamId_None ? 0 : instId;
+    for (uint i = 0; i < master.ManagedCams.Length; i++) {
+        auto cam = master.ManagedCams[i];
+        if (cam is null || cam.FollowedGameMobilId == id) continue;
+        cam.FollowedGameMobilId = id;
+        g_camHookWrites++;
+    }
+    return true;
+}
+#endif
+
 void OnCameraResolveTarget(uint64 rcx) {
     if (rcx == 0) return;
     if (g_camForcedCamId != 0) Dev::Write(rcx + O_CamSys_CamId, g_camForcedCamId);
@@ -36,10 +72,7 @@ bool CamTarget_InstallHook() {
     if (g_camHook !is null) return true;
     if (g_camLastErr.Length > 0) return false;
 #if TURBO
-    // Turbo has no CGameCameraSystem on the script surface and its camera classes are different
-    // (CGameControlCameraTrackManiaRace/2/3); the MP4 resolver address is 64-bit and means nothing here.
-    g_camLastErr = "camera target hook is not implemented on Trackmania Turbo yet";
-    return false;
+    return true;   // nothing to hook: see CamTarget_ApplyTurbo
 #else
     uint64 ptr = Dev::BaseAddress() + CamResolveTarget_RVA;
     string bytes = "";
@@ -58,6 +91,34 @@ bool CamTarget_InstallHook() {
 #endif
 }
 
+#if TURBO
+const string TurboNoSpectateWhy =
+    "spectating a ghost is not available on Turbo yet: its cameras follow a GameMobilId, and the id a race "
+    "ghost gets is not one (the mapping is still being reverse engineered)";
+#endif
+
+// Whether the camera override can run at all. MP4 needs its resolver hook; Turbo needs only a camera set.
+// A plain question, with no side effect: it is asked once per frame by the UI and by State().
+bool CamTarget_Ready() {
+#if TURBO
+    if (!TurboCameraTargetResolved) return false;
+    return TurboCamsMaster() !is null;
+#else
+    return g_camHook !is null;
+#endif
+}
+
+// Why CamTarget_Ready() said no, for a caller that is about to refuse something. Empty when it said yes.
+string CamTarget_WhyNotReady() {
+    if (CamTarget_Ready()) return "";
+#if TURBO
+    if (!TurboCameraTargetResolved) return TurboNoSpectateWhy;
+    return "this playground has no camera set";
+#else
+    return g_camLastErr.Length > 0 ? g_camLastErr : "the camera target hook is not installed";
+#endif
+}
+
 void CamTarget_RemoveHook() {
     g_camWantId = CamId_None;
     g_camForcedId = CamId_None;
@@ -71,7 +132,7 @@ void CamTarget_RemoveHook() {
 bool CamTarget_Set(uint instId) {
     if (!S_CameraHook) return false;
     g_camWantId = instId;
-    return g_camHook !is null;
+    return CamTarget_Ready();
 }
 
 // The camera can only follow a ghost whose playback record is started and not past its end (otherwise the
@@ -103,13 +164,22 @@ void Spectate_CycleFollowCam(bool backwards) {
 }
 
 void CamTarget_Update() {
-    if (!S_CameraHook) { if (g_camHook !is null) CamTarget_RemoveHook(); return; }
-    if (g_camHook is null) CamTarget_InstallHook();
+    if (!S_CameraHook) {
+        if (g_camHook !is null) CamTarget_RemoveHook();
+#if TURBO
+        if (g_camForcedId != CamId_None) { CamTarget_ApplyTurbo(CamId_None); g_camForcedId = CamId_None; }
+#endif
+        return;
+    }
+    if (!CamTarget_Ready()) CamTarget_InstallHook();
     uint id = CamId_None;
     if (g_camWantId != CamId_None && CamTarget_GhostHasVis(Ghosts_FindByInstId(g_camWantId))) id = g_camWantId;
     g_camForcedId = id;
     // Follow spectate: pick the vehicle cam (the engine would always use 0x12)
     g_camForcedCamId = (g_specActive && S_SpectateCameraType == 1) ? Spectate_FollowCamId() : 0;
+#if TURBO
+    if (TurboCameraTargetResolved) CamTarget_ApplyTurbo(id);
+#endif
 }
 
 void CamTarget_Clear() {
@@ -118,7 +188,7 @@ void CamTarget_Clear() {
     g_camForcedCamId = 0;
 }
 
-bool CamTarget_Active() { return g_camHook !is null && g_camForcedId != CamId_None; }
+bool CamTarget_Active() { return CamTarget_Ready() && g_camForcedId != CamId_None; }
 
 // --- camera target reset after spectating ---------------------------------------------------------
 //
@@ -196,6 +266,14 @@ bool Spectate_DropClip() {
 
 // Put the camera back on the local vehicle if it is still aimed at something else. Returns true when it wrote.
 bool CamTarget_ResetToLocal() {
+#if TURBO
+    // The engine's auto-target lives on the same managed cameras, so putting them back on the local
+    // vehicle is the whole reset. Always safe to run, even when targeting is not resolved: it clears any
+    // id we may have written.
+    if (!CamTarget_ApplyTurbo(CamId_None)) return false;
+    g_camResets++;
+    return true;
+#else
     uint64 cs = CamSys_Ptr();
     if (cs == 0) return false;
     uint cur = Dev::ReadUInt32(cs + O_CamSys_AutoId);
@@ -203,6 +281,7 @@ bool CamTarget_ResetToLocal() {
     Dev::Write(cs + O_CamSys_AutoId, uint(0));
     g_camResets++;
     return true;
+#endif
 }
 
 // Stop-spectate path: reset now, then keep checking through the respawn window (the spawn rebuilds the terminal's

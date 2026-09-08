@@ -19,14 +19,9 @@ void Scrubber_AutoOpen(PluginGhost@ pg) {
 
 bool Scrubber_InCountdown() {
     auto rules = CurrentRules();
-    if (rules is null) return false;
-    string login = GetLocalLogin();
-    for (uint i = 0; i < rules.Players.Length; i++) {
-        auto p = rules.Players[i];
-        if (p is null || p.User is null || string(p.User.Login) != login) continue;
-        return int(p.RaceStartTime) > int(rules.Now);
-    }
-    return false;
+    auto p = LocalPlayer();
+    if (rules is null || p is null) return false;
+    return int(p.RaceStartTime) > int(rules.Now);
 }
 
 // Ghosts++ visibility rules: always while spectating or dragging, during the race countdown, and for
@@ -170,37 +165,41 @@ void DrawScrubberWindow() {
     AddSimpleTooltip("Give the clock back to the game (ghost snaps to the player's race time)");
     UI::EndDisabled();
     UI::EndDisabled();
-    UI::SameLine();
     bool locked = Lock_Enabled();
-    // Locked: the strip drives the whole group, so the eye reflects whichever ghost is being spectated.
-    bool anySpec = g_specActive && g_specInstId != 0;
-    bool isSpec = anySpec && (locked || g_specInstId == pg.instId);
-    if (UI::Button((isSpec ? Icons::Eye : Icons::EyeSlash) + "##spec", btn)) {
-        if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
-    }
-    if (UI::IsItemHovered()) {
-        string specName = "";
-        if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.DisplayName() + ")"; }
-        AddSimpleTooltip((isSpec ? "Stop spectating" + specName : "Spectate this ghost") + "\nright click to change");
-    }
-    // right click on the eye: pick any ghost to spectate
-    if (UI::BeginPopupContextItem("g2-spec-menu")) {
-        DrawSpectateMenu();
-        UI::EndPopup();
-    }
-    UI::SameLine();
-    if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(96, 0))) Spectate_CycleCameraType(false);
-    if (UI::IsItemHovered()) {
-        AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls\nOnly Game leaves your spectator keys working; the other three force the view, so the game's own camera keys do nothing while they are selected.");
-        if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
-    }
-    if (S_SpectateCameraType == 1) {
-        // Follow: which vehicle cam (the engine's forced Follow would always use cam 1)
+    // The whole camera group is dead weight where the view cannot be pointed at a ghost at all (Turbo), and
+    // the strip is small: leave it out entirely there rather than show three controls that do nothing.
+    if (CamTarget_WhyNotReady().Length == 0) {
         UI::SameLine();
-        if (UI::Button("Cam " + Math::Clamp(S_SpectateFollowCam, 1, 3) + "##fcam", vec2(62, 0))) Spectate_CycleFollowCam(false);
+        // Locked: the strip drives the whole group, so the eye reflects whichever ghost is being spectated.
+        bool anySpec = g_specActive && g_specInstId != 0;
+        bool isSpec = anySpec && (locked || g_specInstId == pg.instId);
+        if (UI::Button((isSpec ? Icons::Eye : Icons::EyeSlash) + "##spec", btn)) {
+            if (isSpec) Spectate_Stop(); else Spectate_Start(pg.instId);
+        }
         if (UI::IsItemHovered()) {
-            AddSimpleTooltip("Follow camera (click = next, right click = previous)\n  Cam 1: behind, far\n  Cam 2: behind, close\n  Cam 3: internal");
-            if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleFollowCam(true);
+            string specName = "";
+            if (isSpec && g_specInstId != pg.instId) { auto sp = Ghosts_FindByInstId(g_specInstId); if (sp !is null) specName = " (" + sp.DisplayName() + ")"; }
+            AddSimpleTooltip((isSpec ? "Stop spectating" + specName : "Spectate this ghost") + "\nright click to change");
+        }
+        // right click on the eye: pick any ghost to spectate
+        if (UI::BeginPopupContextItem("g2-spec-menu")) {
+            DrawSpectateMenu();
+            UI::EndPopup();
+        }
+        UI::SameLine();
+        if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(96, 0))) Spectate_CycleCameraType(false);
+        if (UI::IsItemHovered()) {
+            AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls\nOnly Game leaves your spectator keys working; the other three force the view, so the game's own camera keys do nothing while they are selected.");
+            if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
+        }
+        if (S_SpectateCameraType == 1) {
+            // Follow: which vehicle cam (the engine's forced Follow would always use cam 1)
+            UI::SameLine();
+            if (UI::Button("Cam " + Math::Clamp(S_SpectateFollowCam, 1, 3) + "##fcam", vec2(62, 0))) Spectate_CycleFollowCam(false);
+            if (UI::IsItemHovered()) {
+                AddSimpleTooltip("Follow camera (click = next, right click = previous)\n  Cam 1: behind, far\n  Cam 2: behind, close\n  Cam 3: internal");
+                if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleFollowCam(true);
+            }
         }
     }
     UI::SameLine();

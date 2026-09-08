@@ -1,7 +1,7 @@
 [Setting hidden]
 bool S_ShowWindow = true;
 
-[Setting category="Loading" name="Replays folder" description="Blank = the game's own Replays folder (IO::FromUserGameFolder(\"Replays\"))."]
+[Setting category="Loading" name="Replays folder" description="Blank = the game's own ghost folder: Replays on ManiaPlanet, the profile's MapsGhosts on Turbo."]
 string S_ReplaysFolder = "";
 
 [Setting category="Leaderboard" name="Zone" description="Leaderboard zone passed to MapLeaderBoard_GetPlayerList, e.g. World or a zone path"]

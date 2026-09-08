@@ -14,6 +14,12 @@ CGamePlaygroundUIConfig::EUISequence g_specPrevSequence = CGamePlaygroundUIConfi
 
 bool Spectate_Start(uint instId) {
     if (instId == 0) return false;
+    string camWhy = CamTarget_WhyNotReady();
+    if (camWhy.Length > 0) {
+        g_status = camWhy + ".";
+        warn("Ghosts2: " + g_status);
+        return false;
+    }
     auto ui = UiAll();
     if (ui is null) return false;
     auto pg = Ghosts_FindByInstId(instId);
@@ -26,19 +32,24 @@ bool Spectate_Start(uint instId) {
     }
 
     if (!g_specSaved) {
+#if !TURBO
         g_specPrevTarget = ui.SpectatorForcedTarget.Value;
         g_specPrevCamType = ui.SpectatorForceCameraType;
         g_specPrevForceSpectator = ui.ForceSpectator;
+#endif
         g_specPrevSequence = ui.UISequence;
         g_specSaved = true;
     }
 
+#if !TURBO
     ui.SpectatorForcedTarget = MwId(instId);
     ui.SpectatorForceCameraType = S_SpectateCameraType;
     if (S_SpectateForceSpectator) ui.ForceSpectator = true;
+#endif
     if (S_SpectateEndRoundSequence) ui.UISequence = CGamePlaygroundUIConfig::EUISequence::EndRound;
 
-    // Classic race: the UI config target is ignored by the camera; the hook forces it (no-op if disabled).
+    // Classic race, and all of Turbo: the UI config target is ignored by (or absent from) the camera, so the
+    // camera override is what actually aims it.
     CamTarget_Set(instId);
 
     g_specActive = true;
@@ -82,11 +93,14 @@ void Spectate_Stop() {
 
 void Spectate_StopEx(bool respawn) {
     auto ui = UiAll();
-    bool wasForced = g_specActive && g_specSaved && S_SpectateForceSpectator;
+    // Turbo never forces the spectator (no such field), so it never grows the spectator camera clip either.
+    bool wasForced = HasSpectatorForcedTarget && g_specActive && g_specSaved && S_SpectateForceSpectator;
     if (ui !is null && g_specSaved) {
+#if !TURBO
         ui.SpectatorForcedTarget = MwId(g_specPrevTarget);
         ui.SpectatorForceCameraType = g_specPrevCamType;
         ui.ForceSpectator = g_specPrevForceSpectator;
+#endif
         if (S_SpectateEndRoundSequence) ui.UISequence = g_specPrevSequence;
     }
     Spectate_Reset();
@@ -96,7 +110,7 @@ void Spectate_StopEx(bool respawn) {
     // is also what Ghosts++ does when leaving a ghost. Unspawn first so the ghosts restart with the player.
     if (wasForced) {
         if (respawn) {
-            if (!Race_SpawnLocal(S_SpectateRespawnDelayMs, true)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
+            if (!Race_SpawnLocal(S_SpectateRespawnDelayMs)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
         } else {
             // No restart: release the terminal's spectator clip slot ourselves (see Spectate_DropClipLater).
             startnew(Spectate_DropClipLater);

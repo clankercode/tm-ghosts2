@@ -15,6 +15,26 @@
 // exactly `wanted`, every tick, in both race types and whether or not the local player is racing.
 // Evidence: research/mp4/2026-09-07-RaceGhost-Runtime.md.
 
+#if TURBO
+// Turbo (32-bit) has the same shape at different offsets, and - measured, and confirmed statically by grok
+// (research/turbo, Race_ProcessPendingGhostAdds 0x00ed9000 / RaceGhostRecord_SetStartTimeAndActivate
+// 0x009103b0) - nothing rewrites a record's StartTime per frame. RaceGhost_ComputeElapsed computes
+// `now - StartTime` on demand, so holding StartTime from Update() is exact with no hook at all.
+const uint16 O_Race_ScriptAddEntries = 0x0c4;   // RaceGhost_Add/Remove act here
+const uint16 O_Race_ScriptAddEntryCount = 0x0c8;
+const uint16 O_Race_AddEntries = 0x3ac;         // live copy, rebuilt at every (re)spawn
+const uint16 O_Race_AddEntryCount = 0x3b0;
+const uint16 O_Race_ScriptRecords = 0x3b8;
+const uint16 O_Race_ScriptRecordCount = 0x3bc;
+const uint16 O_Race_EngineRecords = 0x59c;      // wrappers for CTrackManiaRace.RaceGhosts
+const uint16 O_Race_EngineRecordCount = 0x5a0;
+const uint64 O_Entry_Ghost = 0x4;
+const uint64 O_Rec_Ghost = 0x4;
+const uint64 O_Rec_StartTime = 0x0c;
+const uint64 O_Rec_Started = 0x10;
+const uint64 O_Rec_InstId = 0x24;
+const bool ClockNeedsHook = false;
+#else
 const uint16 O_Race_AddEntries = 0xdd0;        // live copy, rebuilt from the script list at every (re)spawn
 const uint16 O_Race_AddEntryCount = 0xdd8;
 const uint16 O_Race_ScriptAddEntries = 0x1d0;  // script-facing list: RaceGhost_Add/Remove act here, applied at the next spawn
@@ -23,13 +43,24 @@ const uint16 O_Race_ScriptRecords = 0xde0;
 const uint16 O_Race_ScriptRecordCount = 0xde8;
 const uint16 O_Race_EngineRecords = 0x1080;
 const uint16 O_Race_EngineRecordCount = 0x1088;
-const uint64 AddEntryStride = 0x18;
-const uint64 O_Entry_OffsetMs = 0x10;   // u64 at +0x10 = {OffsetMs, GhostInstId}
+const uint64 O_Entry_Ghost = 0x0;
 const uint64 O_Rec_Ghost = 0x0;
-const uint64 O_Rec_StartTime = 0x10;    // u64 at +0x10 = {StartTime, started}
-const uint64 O_Rec_GhostTime = 0x18;
+const uint64 O_Rec_StartTime = 0x10;
+const uint64 O_Rec_Started = 0x14;
+const uint64 O_Rec_GhostTime = 0x18;           // engine-written elapsed; Turbo computes it on demand instead
 const uint64 O_Rec_InstId = 0x28;
 const uint64 O_Rec_Vis = 0x48;
+const bool ClockNeedsHook = true;
+#endif
+
+const uint64 AddEntryStride = 0x18;
+const uint64 O_Entry_OffsetMs = 0x10;
+const uint64 O_Entry_InstId = 0x14;
+#if MANIA32
+const uint64 RecordPtrSize = 4;
+#else
+const uint64 RecordPtrSize = 8;
+#endif
 const uint MaxGhostRecords = 256;
 
 // RaceGhostRecord_UpdatePlaybackTime (ManiaPlanet.exe build 2019-11-19_18_50): image offset + prologue bytes.
@@ -78,17 +109,14 @@ void OnUpdatePlaybackTime(uint64 rdx, uint64 r8) {
     }
 }
 
-bool TimeCtl_HookInstalled() { return g_clockHook !is null; }
+bool TimeCtl_HookInstalled() { return !ClockNeedsHook || g_clockHook !is null; }
 
 bool TimeCtl_InstallHook() {
     if (g_clockHook !is null) return true;
 #if TURBO
-    // The MP4 hook site (RaceGhostRecord_UpdatePlaybackTime, 64-bit) has no Turbo counterpart yet: Turbo is
-    // 32-bit, its playback records live on the race's ghost manager rather than on the race, and the engine
-    // computes the elapsed time on demand instead of writing it per frame. Ghost time control is off on
-    // Turbo until that is mapped (research/turbo/2026-09-08-Turbo-RaceGhost-RE.md).
-    g_timeCtlLastErr = "ghost time control is not implemented on Trackmania Turbo yet";
-    return false;
+    // Nothing to install: Turbo never rewrites a record's StartTime, so Update() can hold it directly and
+    // the sample the engine applies is exact anyway. (MP4 does rewrite it every frame, hence its hook.)
+    return true;
 #else
     uint64 ptr = Dev::BaseAddress() + UpdatePlaybackTime_RVA;
     string bytes = "";
@@ -121,6 +149,36 @@ uint64 SafeU64(uint64 addr) {
     try { return Dev::SafeReadUInt64(addr); } catch { return 0; }
 }
 
+uint SafeU32(uint64 addr) {
+    try { return Dev::SafeReadUInt32(addr); } catch { return 0; }
+}
+
+// One pointer as the process stores it (Turbo is 32-bit).
+uint64 SafePtr(uint64 addr) {
+#if MANIA32
+    return uint64(SafeU32(addr));
+#else
+    return SafeU64(addr);
+#endif
+}
+
+// Where the engine's clock is measured from, i.e. the value RaceGhost_ComputeElapsed subtracts StartTime from.
+uint RaceNow() {
+    auto rules = CurrentRules();
+    return rules is null ? 0 : rules.Now;
+}
+
+// A pointer / a count stored on the race nod, at the process's word size.
+uint64 RaceField(CTrackManiaRace@ race, uint16 off) {
+#if MANIA32
+    return uint64(Dev::GetOffsetUint32(race, off));
+#else
+    return Dev::GetOffsetUint64(race, off);
+#endif
+}
+
+uint RaceCount(CTrackManiaRace@ race, uint16 off) { return Dev::GetOffsetUint32(race, off); }
+
 // Resolved engine objects for one ghost this frame.
 class GhostSlot {
     uint64 entry = 0;   // add entry (script instances only)
@@ -136,36 +194,49 @@ class GhostSlot {
 bool TimeCtl_ReadRecord(uint64 r, GhostSlot@ slot) {
     if (r == 0) return false;
     slot.rec = r;
-    slot.ghostNod = SafeU64(r + O_Rec_Ghost);
-    slot.instId = uint(SafeU64(r + O_Rec_InstId) & 0xffffffff);
-    uint64 st = SafeU64(r + O_Rec_StartTime);
-    slot.startTime = uint(st & 0xffffffff);
-    slot.started = uint(st >> 32) != 0;
+    slot.ghostNod = SafePtr(r + O_Rec_Ghost);
+    slot.instId = SafeU32(r + O_Rec_InstId);
+    slot.startTime = SafeU32(r + O_Rec_StartTime);
+    slot.started = SafeU32(r + O_Rec_Started) != 0 && slot.startTime != 0xffffffff;
+#if TURBO
+    // No engine-written elapsed field on Turbo: the same subtraction the engine does on demand. For a record
+    // this plugin drives, answer with the time it is being held at instead - the record's start time is
+    // rewritten once per Update to mean exactly that, so subtracting a race clock that has moved on since
+    // that write only measures the lag between the write and this read (tens of ms, and it made a held
+    // ghost look like it was creeping forward).
+    auto owned = Clock_Find(r);
+    if (owned !is null) {
+        slot.ghostTime = slot.started ? int(owned.wanted) : -1;
+    } else {
+        uint now = RaceNow();
+        slot.ghostTime = slot.started && now >= slot.startTime ? int(now - slot.startTime) : -1;
+    }
+#else
     slot.ghostTime = slot.started ? int(uint(SafeU64(r + O_Rec_GhostTime) & 0xffffffff)) : -1;
+#endif
     return true;
 }
 
 // Script-mode instance: find the add entry and record by GhostInstId.
 bool TimeCtl_ResolveScript(CTrackManiaRace@ race, uint instId, GhostSlot@ slot) {
-    uint64 entries = Dev::GetOffsetUint64(race, O_Race_AddEntries);
-    uint nEntries = uint(Dev::GetOffsetUint64(race, O_Race_AddEntryCount) & 0xffffffff);
-    uint64 recs = Dev::GetOffsetUint64(race, O_Race_ScriptRecords);
-    uint nRecs = uint(Dev::GetOffsetUint64(race, O_Race_ScriptRecordCount) & 0xffffffff);
+    uint64 entries = RaceField(race, O_Race_AddEntries);
+    uint nEntries = RaceCount(race, O_Race_AddEntryCount);
+    uint64 recs = RaceField(race, O_Race_ScriptRecords);
+    uint nRecs = RaceCount(race, O_Race_ScriptRecordCount);
     if (entries == 0 || recs == 0 || nEntries == 0 || nEntries > MaxGhostRecords || nRecs > MaxGhostRecords) return false;
     slot.entry = 0;
     for (uint i = 0; i < nEntries; i++) {
         uint64 e = entries + AddEntryStride * i;
-        uint64 v = SafeU64(e + O_Entry_OffsetMs);
-        if (uint(v >> 32) == instId) {
+        if (SafeU32(e + O_Entry_InstId) == instId) {
             slot.entry = e;
-            slot.offsetMs = int(uint(v & 0xffffffff));
+            slot.offsetMs = int(SafeU32(e + O_Entry_OffsetMs));
             break;
         }
     }
     if (slot.entry == 0) return false;
     for (uint i = 0; i < nRecs; i++) {
-        uint64 r = SafeU64(recs + 8 * i);
-        if (r != 0 && uint(SafeU64(r + O_Rec_InstId) & 0xffffffff) == instId) return TimeCtl_ReadRecord(r, slot);
+        uint64 r = SafePtr(recs + RecordPtrSize * i);
+        if (r != 0 && SafeU32(r + O_Rec_InstId) == instId) return TimeCtl_ReadRecord(r, slot);
     }
     return false;
 }
@@ -173,13 +244,13 @@ bool TimeCtl_ResolveScript(CTrackManiaRace@ race, uint instId, GhostSlot@ slot) 
 // Engine ghost (classic race): find the record whose +0x0 is this CGameCtnGhost.
 bool TimeCtl_ResolveEngine(CTrackManiaRace@ race, uint64 ghostNod, GhostSlot@ slot) {
     if (ghostNod == 0) return false;
-    uint64 recs = Dev::GetOffsetUint64(race, O_Race_EngineRecords);
-    uint nRecs = uint(Dev::GetOffsetUint64(race, O_Race_EngineRecordCount) & 0xffffffff);
+    uint64 recs = RaceField(race, O_Race_EngineRecords);
+    uint nRecs = RaceCount(race, O_Race_EngineRecordCount);
     if (recs == 0 || nRecs == 0 || nRecs > MaxGhostRecords) return false;
     slot.entry = 0;
     for (uint i = 0; i < nRecs; i++) {
-        uint64 r = SafeU64(recs + 8 * i);
-        if (r != 0 && SafeU64(r + O_Rec_Ghost) == ghostNod) return TimeCtl_ReadRecord(r, slot);
+        uint64 r = SafePtr(recs + RecordPtrSize * i);
+        if (r != 0 && SafePtr(r + O_Rec_Ghost) == ghostNod) return TimeCtl_ReadRecord(r, slot);
     }
     return false;
 }
@@ -197,7 +268,7 @@ bool TimeCtl_Resolve(PluginGhost@ pg, GhostSlot@ slot) {
 }
 
 bool TimeCtl_Available() {
-    return S_TimeControl && g_clockHook !is null && CurrentRace() !is null;
+    return S_TimeControl && TimeCtl_HookInstalled() && CurrentRace() !is null;
 }
 
 // Current time into the replay (ms) as the engine computed it this frame; -1 when unknown / not started.
@@ -294,16 +365,39 @@ void TimeCtl_UpdateList(array<PluginGhost@>@ list) {
     }
 }
 
+#if TURBO
+// Turbo's half of the clock hook: the engine reads StartTime whenever it needs the ghost's time, so writing
+// `now - wanted` once per frame is exactly as precise as MP4's in-hook write, without a hook.
+void TimeCtl_WriteClocks() {
+    uint nowMs = RaceNow();
+    if (nowMs == 0) return;
+    for (uint i = 0; i < g_clock.Length; i++) {
+        auto e = g_clock[i];
+        if (e.rec == 0) continue;
+        if (e.lastNowMs != 0 && nowMs > e.lastNowMs && !e.paused) e.wanted += double(nowMs - e.lastNowMs) * e.speed;
+        e.lastNowMs = nowMs;
+        if (e.wanted < 0) e.wanted = 0;
+        uint w = uint(e.wanted);
+        if (w > nowMs) w = nowMs;
+        Dev::Write(e.rec + O_Rec_StartTime, uint(nowMs - w));
+        g_timeCtlWrites++;
+    }
+}
+#endif
+
 void TimeCtl_Update(float dt) {
     g_timeCtlUpdates++;
     if (!S_TimeControl) {
         if (g_clockHook !is null) TimeCtl_RemoveHook();
         return;
     }
-    if (g_clockHook is null && g_timeCtlLastErr.Length == 0) TimeCtl_InstallHook();
-    if (g_clockHook is null) return;
+    if (!TimeCtl_HookInstalled() && g_timeCtlLastErr.Length == 0) TimeCtl_InstallHook();
+    if (!TimeCtl_HookInstalled()) return;
     if (g_ghosts.Length > 0) TimeCtl_UpdateList(g_ghosts);
     if (g_engineGhosts.Length > 0) TimeCtl_UpdateList(g_engineGhosts);
     Lock_Update();
     if (g_clock.Length > 0) TimeCtl_CollectOrphans();
+#if TURBO
+    TimeCtl_WriteClocks();
+#endif
 }

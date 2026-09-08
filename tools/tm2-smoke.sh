@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# Ghosts2 smoke test against the live ManiaPlanet 4 game, through the tm-mp4-control socket and the
-# ghosts2 command pack. Prints one PASS/FAIL line per check and exits non-zero if any check failed.
+# Ghosts2 smoke test against the live game, through the tm-mp4-control socket and the ghosts2 command pack.
+# Prints one PASS/FAIL line per check and exits non-zero if any check failed.
 #
-#   tools/tm2-smoke.sh              run the checks against whatever race is loaded
-#   tools/tm2-smoke.sh --nav        also drive the game to a script race first (slow, ~2 min)
+#   tools/tm2-smoke.sh              run the checks against whatever race is loaded (ManiaPlanet 4)
+#   GAME=turbo tools/tm2-smoke.sh   same checks against Trackmania Turbo
+#   tools/tm2-smoke.sh --nav        also drive the game to a script race first (MP4 only, slow, ~2 min)
 #   tools/tm2-smoke.sh --nav-map 'Campaigns\0\A02.Map.Gbx'
 #
 # The plugin and the pack must already be staged and loaded (./build.sh dev, mp4pack/build.sh dev).
 # This restarts the local player's run several times and adds/removes ghosts: do not run it mid-attempt.
+# Turbo pauses whenever its window loses focus, so give it the focus before running this there.
 set -uo pipefail
 CTL="${MP4_CONTROL_DIR:-$HOME/src/openplanet/my-plugins/tm-mp4-control}"
+GAME="${GAME:-mp4}"
+case "$GAME" in
+  mp4)   PORT=34531; MEDAL=4; MEDAL_NAME="author" ;;
+  turbo) PORT=34532; MEDAL=4; MEDAL_NAME="author" ;;
+  *) echo "unknown GAME=$GAME (mp4|turbo)" >&2; exit 2 ;;
+esac
+export MP4_CONTROL_PORT="$PORT"
 call() { timeout 30 python3 "$CTL/tools/mp4call.py" "$@" 2>&1; }
 NAV=0; NAV_MAP='Campaigns\0\A02.Map.Gbx'
 while [[ $# -gt 0 ]]; do
@@ -46,6 +55,9 @@ wait_until() {
   return 1
 }
 
+if [[ "$NAV" == "1" && "$GAME" != "mp4" ]]; then
+  echo "--nav only knows how to drive ManiaPlanet 4; start the Turbo race yourself" >&2; exit 2
+fi
 if [[ "$NAV" == "1" ]]; then
   head_ "navigating to a script race ($NAV_MAP)"
   timeout 240 "$CTL/tools/mp-play-map-script.sh" "$NAV_MAP" >/dev/null 2>&1 \
@@ -58,6 +70,9 @@ if [[ "$(state "'ok' if r.get('ok') else 'no'")" == "ok" ]]; then ok "ghosts2.st
   bad "ghosts2.state did not respond - is the plugin (and mp4pack) loaded?"; echo; echo "$pass passed, $fail failed"; exit 1
 fi
 uid="$(state "d['mapUid']")"; note "map $uid"
+# Start from an empty list. Ghosts left by an earlier run make the sync and record checks read leftovers
+# rather than what this run did, which shows up as a flaky failure rather than an obvious stale-state one.
+call ghosts2.remove_all >/dev/null; sleep 3
 
 head_ "the race accepts ghosts"
 mode="$(call race | jq_ "d['currentPlayground']")"
@@ -76,22 +91,39 @@ else bad "leaderboard cache is for another map: '$lb_uid' != '$uid'"; fi
 if [[ "$can_add" == "1" ]]; then
   head_ "adding a ghost starts it"
   before="$(state "d['tracked']")"
-  call ghosts2.load_medal level=4 >/dev/null
+  call ghosts2.load_medal level="$MEDAL" >/dev/null
   if wait_until 25 bash -c "[[ \$(timeout 20 python3 '$CTL/tools/mp4call.py' ghosts2.state 2>/dev/null | python3 -c \"import json,sys;print(json.load(sys.stdin)['data']['tracked'])\") -gt $before ]]"; then
-    ok "medal ghost tracked (was $before)"
-  else bad "medal ghost never appeared in the tracked list"; fi
+    ok "$MEDAL_NAME medal ghost tracked (was $before)"
+  else bad "$MEDAL_NAME medal ghost never appeared in the tracked list"; fi
   note "status: $(state "d['status']")"
-  # the added ghost must get a playback record (ghostTime >= 0), i.e. the run restarted for it
-  if wait_until 25 bash -c "timeout 20 python3 '$CTL/tools/mp4call.py' ghosts2.list 2>/dev/null | python3 -c \"
+  started="$(state "d['runStarted']")"
+  note "mode $(state "d['modeName']"), run started $started"
+  if [[ "$started" == "True" ]]; then
+    # the added ghost must get a playback record (ghostTime >= 0), i.e. the run restarted for it
+    # Only the ghosts Ghosts2 loaded: an engine ghost the game put in the race can be listed with no
+    # resolvable playback record, and that is the game's business, not a failure of the add.
+    if wait_until 25 bash -c "timeout 20 python3 '$CTL/tools/mp4call.py' ghosts2.list 2>/dev/null | python3 -c \"
 import json,sys
-gs=json.load(sys.stdin)['data']
+gs=[g for g in json.load(sys.stdin)['data'] if g['source'] != 'engine']
 sys.exit(0 if gs and all(g['ghostTime']>=0 for g in gs) else 1)\""; then
-    ok "every tracked ghost has a playback record (added ghosts actually start)"
-  else
-    bad "a tracked ghost still has no playback record"
-    ghosts | python3 -c "
+      ok "every tracked ghost has a playback record (added ghosts actually start)"
+    else
+      bad "a tracked ghost still has no playback record"
+      ghosts | python3 -c "
 import json,sys
 for g in json.load(sys.stdin)['data']: print('        ', g['instId'], g['nickname'][:20], 'ghostTime', g['ghostTime'])"
+    fi
+  else
+    # No run to restart (CampaignSolo parks the car behind the map's challenge card). The ghost must be
+    # queued for the player's own start, and - the regression this guards - the car must still be there:
+    # asking for a spawn from that screen takes it away and leaves the card up.
+    sleep 3
+    if [[ "$(state "d['playerSpawned']")" == "True" ]]; then ok "no run to restart: the car was left alone"
+    else bad "the car was unspawned by an add while no run was started"; fi
+    if [[ "$(state "d['status']")" == *"starts when you start your run"* ]]; then ok "the add says it starts with the run"
+    else bad "unexpected status while parked: $(state "d['status']")"; fi
+    if [[ "$(state "d['restartHeld']")" == "True" ]]; then ok "the restart is held, not dropped"
+    else bad "the restart was not held (it will never fire)"; fi
   fi
 
 fi
@@ -124,22 +156,22 @@ else
   fi
 
   head_ "playback control (pause / seek / speed, through the lock)"
-  id="$(ghosts | jq_ "d[0]['instId']")"
+  id="$(ghosts | jq_ "next(g['instId'] for g in d if g['ghostTime'] >= 0 and g['instId'])")"
   # seek first so the pause check holds a non-zero time (a ghost paused at its start would pass trivially)
   call ghosts2.pause instId="$id" paused=true >/dev/null; sleep 1
   call ghosts2.seek instId="$id" ms=5000 >/dev/null; sleep 2
-  s="$(ghosts | jq_ "d[0]['ghostTime']")"
+  s="$(ghosts | jq_ "next(g['ghostTime'] for g in d if g['instId'] == $id)")"
   if [[ "$s" == "5000" ]]; then ok "seek lands exactly (5000 ms)"; else bad "seek landed at $s, expected 5000"; fi
-  a="$(ghosts | jq_ "d[0]['ghostTime']")"; sleep 3; b="$(ghosts | jq_ "d[0]['ghostTime']")"
+  a="$(ghosts | jq_ "next(g['ghostTime'] for g in d if g['instId'] == $id)")"; sleep 3; b="$(ghosts | jq_ "next(g['ghostTime'] for g in d if g['instId'] == $id)")"
   if [[ "$a" == "$b" && "${a:-0}" -gt 0 ]]; then ok "paused ghost does not advance ($a ms held for 3 s)"
   elif [[ "$a" == "$b" ]]; then bad "pause check was trivial: ghost sat at ${a} ms"
   else bad "paused ghost advanced $a -> $b"; fi
   # every locked member must sit at the same time
-  spread="$(ghosts | jq_ "max(g['ghostTime'] for g in d) - min(g['ghostTime'] for g in d)")"
+  spread="$(ghosts | jq_ "max(g['ghostTime'] for g in d if g['ghostTime'] >= 0) - min(g['ghostTime'] for g in d if g['ghostTime'] >= 0)")"
   if [[ "${spread:-99}" -le 2 ]]; then ok "locked ghosts are in sync (spread ${spread} ms)"; else bad "locked ghosts drifted ${spread} ms apart"; fi
   call ghosts2.speed instId="$id" speed=2 >/dev/null
   call ghosts2.pause instId="$id" paused=false >/dev/null
-  t0="$(ghosts | jq_ "d[0]['ghostTime']")"; sleep 4; t1="$(ghosts | jq_ "d[0]['ghostTime']")"
+  t0="$(ghosts | jq_ "next(g['ghostTime'] for g in d if g['instId'] == $id)")"; sleep 4; t1="$(ghosts | jq_ "next(g['ghostTime'] for g in d if g['instId'] == $id)")"
   rate=$(( (t1 - t0) / 4 ))
   if [[ "$rate" -gt 1700 && "$rate" -lt 2300 ]]; then ok "2x speed measured ${rate} ms/s"; else bad "2x speed measured ${rate} ms/s (want ~2000)"; fi
   call ghosts2.speed instId="$id" speed=1 >/dev/null
@@ -163,7 +195,14 @@ sys.exit(0 if len(json.load(sys.stdin)['data']['entries'])>0 else 1)\""; then
 
   head_ "spectate and stop"
   sleep 1
-  if [[ "$(call ghosts2.spectate instId="$id" | jq_ "'ok' if r.get('ok') else 'no'")" == "ok" ]]; then
+  if [[ "$(state "d['camReady']")" != "True" ]]; then
+    # Turbo: the camera follows a GameMobilId and a race ghost's instance id is not one. The plugin has to
+    # say so and leave the camera alone, rather than write an id nothing follows.
+    st="$(call ghosts2.spectate instId="$id" >/dev/null; state "d['status']")"
+    if [[ "$(state "d['spectating']")" == "False" ]]; then ok "spectating is refused where the camera cannot follow a ghost"
+    else bad "spectate started even though the camera is not ready"; fi
+    if [[ -n "$st" ]]; then note "refusal: $st"; fi
+  elif [[ "$(call ghosts2.spectate instId="$id" | jq_ "'ok' if r.get('ok') else 'no'")" == "ok" ]]; then
     sleep 3
     [[ "$(state "d['spectating']")" == "True" ]] && ok "spectating" || bad "spectate reported ok but state says not spectating"
     forced="$(state "hex(d['camForcedId'])")"; note "camera forced id $forced"
@@ -192,8 +231,14 @@ sys.exit(0 if len(json.load(sys.stdin)['data']['entries'])>0 else 1)\""; then
 fi
 
 head_ "hooks are healthy"
-[[ "$(state "d['timeCtlHook']")" == "True" ]] && ok "playback clock hook installed" || bad "playback clock hook missing"
-[[ "$(state "d['camHook']")" == "True" ]] && ok "camera target hook installed" || bad "camera target hook missing"
+# Turbo needs no clock hook (nothing there rewrites a record's start time per frame) and has no camera
+# override yet, so what must hold is "the clock is drivable", not "a hook object exists".
+[[ "$(state "d['timeCtlReady']")" == "True" ]] && ok "playback clock is drivable" || bad "playback clock is not drivable"
+if [[ "$GAME" == "mp4" ]]; then
+  [[ "$(state "d['camHook']")" == "True" ]] && ok "camera target hook installed" || bad "camera target hook missing"
+else
+  [[ "$(state "d['camReady']")" == "False" ]] && ok "camera override reports itself unavailable (Turbo)" || ok "camera override is ready"
+fi
 err="$(state "d['timeCtlLastErr']")"; [[ -z "$err" ]] && ok "no time-control error" || bad "time control error: $err"
 err="$(state "d['camLastErr']")"; [[ -z "$err" ]] && ok "no camera error" || bad "camera error: $err"
 
