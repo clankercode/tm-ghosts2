@@ -230,21 +230,22 @@ bool Race_RunStarted() {
     return p !is null && p.IsSpawned && p.RaceStartTime > 0;
 }
 
-// Vtable sanity check before treating an address as a nod (Reflection on a non-nod crashes the game):
-// the vtable must be in the exe image and its first entry the shared CMwNod base slot (image offset 0x141dc0).
-bool LooksLikeNod(uint64 ptr) {
+// The first vtable slot is one shared function for every CMwNod subclass, so "vtable is inside the exe image
+// and its first entry is that function" is a cheap, strong test for whether an address is a nod at all. The
+// slot's image offset is per-build; Ghosts2::NodProbe measures it (on Turbo it agreed across App, the race,
+// the rules, the map, DataMgr and three CGameCtnGhosts).
 #if TURBO
-    // The base-slot signature below is the 64-bit MP4 one. Until the 32-bit equivalent is measured, refuse
-    // every raw pointer on Turbo rather than hand an unverified address to Reflection (that crashes the game).
-    return false;
+const uint64 NodBaseSlot_RVA = 0x55ce50;
 #else
+const uint64 NodBaseSlot_RVA = 0x141dc0;
+#endif
+
+// Vtable sanity check before treating an address as a nod (Reflection on a non-nod crashes the game).
+bool LooksLikeNod(uint64 ptr) {
     if (ptr == 0 || (ptr & 7) != 0) return false;
     uint64 base = Dev::BaseAddress();
-    try {
-        uint64 vt = Dev::SafeReadUInt64(ptr);
-        if (vt < base || vt >= base + 0x2000000 || (vt & 7) != 0) return false;
-        return Dev::SafeReadUInt64(vt) == base + 0x141dc0;
-    } catch { return false; }
-#endif
+    uint64 vt = SafePtr(ptr);
+    if (vt < base || vt >= base + 0x2000000 || (vt & 7) != 0) return false;
+    return SafePtr(vt) == base + NodBaseSlot_RVA;
 }
 

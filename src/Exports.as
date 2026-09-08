@@ -20,6 +20,8 @@ namespace Ghosts2 {
     import void StopSpectatingEx(bool respawn) from "Ghosts2";   // respawn=false: release the spectator clip instead
     import bool ResetCamera() from "Ghosts2";   // camera system auto target -> local vehicle (true if it changed)
     import Json::Value@ State() from "Ghosts2";
+    import Json::Value@ RaceEntries() from "Ghosts2";   // diagnostic: raw race ghost add lists + what each entry resolves to
+    import Json::Value@ NodProbe() from "Ghosts2";      // diagnostic: nod vtable signature (for LooksLikeNod on 32-bit)
     import void ShowWindow(bool visible) from "Ghosts2";
     import void SelectTab(const string &in tab) from "Ghosts2";   // "ghosts" | "playback" | "load" | "state"
     import void MoveWindow(int x, int y) from "Ghosts2";          // one-shot, ImGui coordinates

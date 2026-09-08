@@ -131,6 +131,140 @@ namespace Ghosts2 {
     void StopSpectatingEx(bool respawn) { Spectate_StopEx(respawn); }
     bool ResetCamera() { return CamTarget_ResetToLocal(); }
 
+    // Diagnostic: the race's ghost add lists exactly as they are in memory, plus what each entry resolves to.
+    // Written for "a ghost is on track but not in the list" reports - the adoption path skips entries whose
+    // CGameCtnGhost will not resolve, and this is the only way to see which entries those were and why.
+    Json::Value@ RaceEntries() {
+        auto o = Json::Object();
+        auto race = CurrentRace();
+        if (race is null) { o["race"] = false; return o; }
+        o["race"] = true;
+        o["racePtr"] = Text::Format("%llx", NodPointer(race));
+        o["lists"] = Json::Array();
+        array<uint16> listOffs = { O_Race_ScriptAddEntries, O_Race_AddEntries };
+        array<uint16> countOffs = { O_Race_ScriptAddEntryCount, O_Race_AddEntryCount };
+        array<string> listNames = { "script", "live" };
+        for (uint li = 0; li < listOffs.Length; li++) {
+            auto lo = Json::Object();
+            lo["name"] = listNames[li];
+            uint64 entries = Dev::GetOffsetUint64(race, listOffs[li]);
+            uint n = uint(Dev::GetOffsetUint64(race, countOffs[li]) & 0xffffffff);
+            lo["ptr"] = Text::Format("%llx", entries);
+            lo["count"] = n;
+            auto arr = Json::Array();
+            if (entries != 0 && n <= MaxGhostRecords) {
+                for (uint i = 0; i < n; i++) {
+                    uint64 e = entries + AddEntryStride * i;
+                    auto row = Json::Object();
+                    uint64 v, ghostPtr, flags;
+                    try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafePtr(e + O_Entry_Ghost); flags = SafeU64(e + 8); }
+                    catch { row["error"] = "unreadable"; arr.Add(row); continue; }
+                    row["instId"] = Text::Format("%08x", uint(v >> 32));
+                    row["offsetMs"] = uint(v & 0xffffffff);
+                    row["flags"] = Text::Format("%llx", flags);
+                    row["ghostPtr"] = Text::Format("%llx", ghostPtr);
+                    auto nod = NodFromPointer(ghostPtr);
+                    row["nodResolved"] = nod !is null;
+                    if (nod !is null) {
+                        auto ctn = cast<CGameCtnGhost>(nod);
+                        row["isCtnGhost"] = ctn !is null;
+                        if (ctn !is null) {
+                            row["nickname"] = string(ctn.GhostNickname);
+                            row["raceTime"] = ctn.RaceTime;
+                        }
+                    }
+                    arr.Add(row);
+                }
+            }
+            lo["entries"] = arr;
+            o["lists"].Add(lo);
+        }
+        auto dfm = DataMgr();
+        auto dg = Json::Array();
+        if (dfm !is null) {
+            for (uint i = 0; i < dfm.Ghosts.Length; i++) {
+                auto gs = dfm.Ghosts[i];
+                if (gs is null) continue;
+                auto row = Json::Object();
+                row["nickname"] = string(gs.Nickname);
+                row["time"] = ScriptGhostTime(gs);
+                dg.Add(row);
+            }
+        }
+        o["dataMgrGhosts"] = dg;
+        auto tracked = Json::Array();
+        for (uint i = 0; i < g_ghosts.Length; i++) tracked.Add(Text::Format("%08x", g_ghosts[i].instId));
+        o["tracked"] = tracked;
+        auto ignored = Json::Array();
+        for (uint i = 0; i < g_ignoredInstIds.Length; i++) ignored.Add(Text::Format("%08x", g_ignoredInstIds[i]));
+        o["ignored"] = ignored;
+        return o;
+    }
+
+    // Diagnostic: the vtable signature of known-good nods, so LooksLikeNod can be given a real check on a
+    // 32-bit game instead of refusing everything. For each live nod: its address, the vtable pointer at +0,
+    // and the first vtable slot - the MP4 check works because that slot is one shared function for every
+    // CMwNod subclass, and this shows whether the same holds here and at what RVA.
+    Json::Value@ NodProbe() {
+        auto o = Json::Object();
+        uint64 base = Dev::BaseAddress();
+        o["base"] = Text::Format("%llx", base);
+        auto arr = Json::Array();
+        array<CMwNod@> nods;
+        array<string> names;
+        auto app = App();
+        nods.InsertLast(app); names.InsertLast("App");
+        auto race = CurrentRace();
+        nods.InsertLast(race); names.InsertLast("Race");
+        nods.InsertLast(CurrentRules()); names.InsertLast("Rules");
+        nods.InsertLast(CurrentMap()); names.InsertLast("Map");
+        auto dfm = DataMgr();
+        nods.InsertLast(dfm); names.InsertLast("DataMgr");
+        if (dfm !is null) {
+            for (uint i = 0; i < dfm.Ghosts.Length && i < 3; i++) {
+                nods.InsertLast(dfm.Ghosts[i]); names.InsertLast("DataMgr.Ghosts[" + i + "] " + string(dfm.Ghosts[i].Nickname));
+            }
+        }
+        for (uint i = 0; i < nods.Length; i++) {
+            auto row = Json::Object();
+            row["name"] = names[i];
+            if (nods[i] is null) { row["null"] = true; arr.Add(row); continue; }
+            uint64 ptr = NodPointer(nods[i]);
+            row["ptr"] = Text::Format("%llx", ptr);
+            uint64 vt = SafePtr(ptr);
+            row["vt"] = Text::Format("%llx", vt);
+            row["vtRva"] = Text::Format("%llx", vt - base);
+            uint64 slot0 = SafePtr(vt);
+            row["slot0"] = Text::Format("%llx", slot0);
+            row["slot0Rva"] = Text::Format("%llx", slot0 - base);
+            arr.Add(row);
+        }
+        o["nods"] = arr;
+        // The same three reads for the raw pointers sitting in the race's ghost add list, which is what
+        // LooksLikeNod has to judge.
+        auto raw = Json::Array();
+        if (race !is null) {
+            uint64 entries = Dev::GetOffsetUint64(race, O_Race_ScriptAddEntries);
+            uint n = uint(Dev::GetOffsetUint64(race, O_Race_ScriptAddEntryCount) & 0xffffffff);
+            if (entries != 0 && n <= MaxGhostRecords) {
+                for (uint i = 0; i < n; i++) {
+                    uint64 ptr = SafePtr(entries + AddEntryStride * i + O_Entry_Ghost);
+                    auto row = Json::Object();
+                    row["instId"] = Text::Format("%08x", SafeU32(entries + AddEntryStride * i + O_Entry_InstId));
+                    row["ptr"] = Text::Format("%llx", ptr);
+                    uint64 vt = SafePtr(ptr);
+                    row["vt"] = Text::Format("%llx", vt);
+                    row["vtRva"] = Text::Format("%llx", vt - base);
+                    row["slot0"] = Text::Format("%llx", SafePtr(vt));
+                    row["slot0Rva"] = Text::Format("%llx", SafePtr(vt) - base);
+                    raw.Add(row);
+                }
+            }
+        }
+        o["rawEntryPtrs"] = raw;
+        return o;
+    }
+
     Json::Value@ State() {
         auto o = Json::Object();
         o["busy"] = g_busy;

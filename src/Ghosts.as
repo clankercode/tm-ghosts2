@@ -136,7 +136,11 @@ bool Ghosts_AdoptList(CTrackManiaRaceRules@ rules, CTrackManiaRace@ race, uint16
     for (uint i = 0; i < nEntries; i++) {
         uint64 e = entries + AddEntryStride * i;
         uint64 v, ghostPtr, flags;
-        try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafeU64(e); flags = SafeU64(e + 8); } catch { return false; }
+        // The ghost handle sits at O_Entry_Ghost, which is +4 on Turbo (a 32-bit pointer after a leading
+        // sentinel word) and +0 on ManiaPlanet. Reading it at a fixed +0 as a full 64 bits gave every Turbo
+        // entry a pointer that resolved to nothing, so every ghost the mode added - the medal ghosts included -
+        // was dropped as "no finished time and no script handle" and never appeared in the list.
+        try { v = SafeU64(e + O_Entry_OffsetMs); ghostPtr = SafePtr(e + O_Entry_Ghost); flags = SafeU64(e + 8); } catch { return false; }
         uint instId = uint(v >> 32);
         if (instId == 0) continue;
         if (ids.Find(instId) < 0) ids.InsertLast(instId);
