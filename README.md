@@ -239,9 +239,18 @@ What works on Turbo, all measured live on campaign map 003:
   **Map records** rather than pretending there is a world leaderboard.
 - **Adding ghosts, and the restart that starts them** — `RaceGhost_Add` plus a `SpawnPlayer`, exactly as
   on ManiaPlanet 4.
-- **Playback control with no hook at all.** Nothing on Turbo rewrites a ghost record's start time per
-  frame, so Ghosts2 simply holds `record + 0x0c = rules.Now - wanted` from its own `Update()`. Measured:
-  a paused ghost holds its millisecond over 3 s, seeks land exactly, 2x measures 2.1x.
+- **Playback control — works, but visibly stutters. Known bug.** Ghosts2 holds
+  `record + 0x0c = rules.Now - wanted` from its own `Update()`. That does control the ghost, but it is only
+  the right value at the instant we write it: the engine computes `elapsed = EngineNow - StartTime` at *its*
+  tick, so what you see carries the frame-phase error between the two. Measured on campaign 003 with the race
+  clock advancing, a ghost held at 8000 ms read 8033–8074 ms in the engine's own field — roughly a metre of
+  wobble at speed. Pausing and scrubbing are the worst cases.
+
+  The 0.5.0 note said this was measured exact. It was not: Ghosts2 reports an owned ghost's time as the value
+  it is *asking* for, so the old measurement compared our intention against itself. `ghosts2.list` now also
+  reports `engineGhostTime` and `holdError` so the real thing is visible. The fix is the one ManiaPlanet 4
+  already uses — write the clock from inside the engine tick that consumes it — but that tick has not been
+  located on Turbo yet, so it is not fixed here.
 - **The lock, the scrubber, removal, re-add and the save path** (Turbo has no replay-file writer, so
   saving goes through `DataMgr.StoreRecordName` — which writes into the map's own record table as *your*
   record, so Ghosts2 asks for confirmation first).

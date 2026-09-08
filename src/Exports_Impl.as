@@ -18,6 +18,9 @@ namespace Ghosts2 {
             row["visible"] = RaceGhostVisible(rules, pg.InstMwId());
             row["replayOver"] = rules !is null && pg.instId != 0 && rules.RaceGhost_IsReplayOver(pg.InstMwId());
             row["ghostTime"] = TimeCtl_GhostTime(pg);
+            // What the engine renders, and how far that is from where we are holding it (see TimeCtl_HoldError).
+            row["engineGhostTime"] = TimeCtl_EngineGhostTime(pg);
+            row["holdError"] = TimeCtl_HoldError(pg);
             row["paused"] = pg.paused;
             row["speed"] = pg.speed;
             arr.Add(row);

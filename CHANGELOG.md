@@ -38,6 +38,15 @@ hit were still real on 0.5.1.
   comment in `Spectate.as` still said to unspawn first. 0.5.0 established that the unspawn is exactly the
   thing that must never happen (it costs you the car and the challenge card in `CampaignSolo`); both now say
   what the code actually does.
+- 2026-09-08: **Correction: Turbo playback control stutters, and 0.5.0's evidence that it did not was
+  self-confirming.** `TimeCtl_GhostTime` answers for a record Ghosts2 drives with our own `wanted`, so
+  "a paused ghost holds its millisecond" only ever tested our intention against itself. Reading the engine's
+  own elapsed instead (`rec+0x14`, a field the old note said did not exist) while the race clock provably
+  advanced: a ghost held at 8000 ms rendered at 8033-8074 ms, a ~45 ms lag with ~40 ms of jitter, which is
+  about a metre of position wobble at racing speed. Cause: holding `StartTime` from `Update()` makes it
+  correct at *our* tick, not at the engine's - the same frame-phase problem ManiaPlanet 4 hooks to avoid.
+  Not fixed yet (the Turbo tick that consumes the clock is not located); `ghosts2.list` now reports
+  `engineGhostTime` and `holdError` so it is measurable, and the code and README say so plainly.
 - 2026-09-08: The update check is verified on Trackmania Turbo as well (it fetched `v0.5.1`, reported up to
   date, and left the daily gate closed).
 

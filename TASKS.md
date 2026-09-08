@@ -132,6 +132,29 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
 - [x] Trap found doing it: `Meta::ExecutingPlugin()` called inside an export resolves to the **caller's**
       plugin. Capture anything about "this plugin" at module init (`PluginVersion` in `Main.as`)
 
+## Turbo playback stutter (open, 2026-09-08)
+
+- [x] Reproduced and quantified. Ghost held at `wanted` 8000 ms, race clock provably advancing over a 6560 ms
+      window: our `rec+0x0C` writes landed every frame, but the engine's own elapsed (`rec+0x14`) read
+      8033..8074 - ~45 ms mean lag, ~40 ms jitter, about a metre of wobble at speed.
+- [x] Cause: `TimeCtl_WriteClocks` sets `StartTime = RaceNow - wanted` from `Update()`. The engine renders
+      `elapsed = EngineNow - StartTime` at its own tick, so the result carries the varying phase difference.
+      "Nothing overwrites our StartTime" (true) is not "our StartTime is right at render time" (false).
+- [x] Why 0.5.0 missed it: `TimeCtl_GhostTime` returns `owned.wanted` for a driven record, so every
+      measurement compared our intention against itself. Fixed by exposing `engineGhostTime` / `holdError`.
+- [ ] **The fix: hook the engine tick that consumes the clock and write `StartTime` there** (what MP4 does
+      with `RaceGhostRecord_UpdatePlaybackTime`). Blocked on identifying that tick on Turbo:
+      - `Race_UpdateActiveGhostPlayback` 0x00EB4980 (thiscall, ECX = TmRaceRules) is the vis apply, but it
+        walks ghost *nods* at `[rules+0x11d0]+0x590` using `ghost+0x1BC` as the clock - not the record array.
+        Prologue verified live and statically: `83 EC 20 8B 81 D0 11 00 00 89 0C 24 85 C0 0F 84`.
+      - `RaceGhost_ComputeElapsed` 0x0090F8F0 (cdecl, [esp+4]=rec, [esp+8]=now) is called only from
+        `RaceGhost_GetCurCheckpoint` and discards its sample index - not a per-frame path.
+      - **Unlocated: whoever stores `rec+0x14`.** That is the tick our writes demonstrably feed, so it is the
+        right hook. grok is looking for the store statically.
+      - Do not hook speculatively; gate any hook on the prologue bytes the way the MP4 one is.
+- [ ] Turbo pauses whenever its window loses focus, which makes live measurement from an agent session flaky
+      (every foreground shell command can steal focus). `tm-no-auto-pause` should remove this.
+
 ## Player feedback (Juesto, against 0.2.0)
 
 - [x] **Your own ghost is missing / you have to re-add it by hand / it does not survive restarts** - one

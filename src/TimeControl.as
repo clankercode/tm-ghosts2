@@ -16,10 +16,28 @@
 // Evidence: research/mp4/2026-09-07-RaceGhost-Runtime.md.
 
 #if TURBO
-// Turbo (32-bit) has the same shape at different offsets, and - measured, and confirmed statically by grok
-// (research/turbo, Race_ProcessPendingGhostAdds 0x00ed9000 / RaceGhostRecord_SetStartTimeAndActivate
-// 0x009103b0) - nothing rewrites a record's StartTime per frame. RaceGhost_ComputeElapsed computes
-// `now - StartTime` on demand, so holding StartTime from Update() is exact with no hook at all.
+// Turbo (32-bit) has the same shape at different offsets. Nothing there rewrites a record's StartTime per
+// frame, so Ghosts2 holds it from Update() instead of hooking.
+//
+// KNOWN BUG (2026-09-08): that is NOT enough, and Turbo playback visibly stutters because of it. "The engine
+// does not clobber our StartTime" is a different claim from "our StartTime is the right value when the engine
+// renders", and only the first is true. The engine computes elapsed = EngineNow - StartTime at its own tick,
+// while we compute StartTime = RaceNow - wanted at ours, so the rendered time carries the frame-phase error
+// (EngineNow_at_tick - RaceNow_at_our_write), which changes every frame.
+//
+// Measured on campaign 003 with the race clock provably advancing (6560 ms window): a ghost held at
+// wanted = 8000 had our StartTime writes landing every single frame, while the engine's own elapsed
+// (rec+0x14) read 8033..8074 - a mean lag of ~45 ms and ~40 ms of jitter, which is about a metre of position
+// wobble at racing speed. That is the vibration.
+//
+// The 0.5.0 note claiming this was "measured exact" was self-confirming: TimeCtl_GhostTime answers for an
+// owned record with our own `wanted`, so every check compared our intention against itself. TimeCtl_HoldError
+// exists now so this class of bug is measurable rather than invisible.
+//
+// The fix is the one MP4 already uses - write StartTime from inside the engine tick that consumes it - but
+// that tick has not been identified on Turbo yet. Race_UpdateActiveGhostPlayback 0x00EB4980 is the vis apply
+// and is nod-list based (walks [rules+0x11d0]+0x590, clock ghost+0x1BC), so it is not obviously the writer of
+// rec+0x14; the store to rec+0x14 is still unlocated. Do NOT hook speculatively. See TASKS.md.
 const uint16 O_Race_ScriptAddEntries = 0x0c4;   // RaceGhost_Add/Remove act here
 const uint16 O_Race_ScriptAddEntryCount = 0x0c8;
 const uint16 O_Race_AddEntries = 0x3ac;         // live copy, rebuilt at every (re)spawn
@@ -33,6 +51,7 @@ const uint64 O_Rec_Ghost = 0x4;
 const uint64 O_Rec_StartTime = 0x0c;
 const uint64 O_Rec_Started = 0x10;
 const uint64 O_Rec_InstId = 0x24;
+const uint64 O_Rec_EngineElapsed = 0x14;   // engine-written playback time (see TimeCtl_ReadRecord)
 const bool ClockNeedsHook = false;
 #else
 const uint16 O_Race_AddEntries = 0xdd0;        // live copy, rebuilt from the script list at every (re)spawn
@@ -114,8 +133,8 @@ bool TimeCtl_HookInstalled() { return !ClockNeedsHook || g_clockHook !is null; }
 bool TimeCtl_InstallHook() {
     if (g_clockHook !is null) return true;
 #if TURBO
-    // Nothing to install: Turbo never rewrites a record's StartTime, so Update() can hold it directly and
-    // the sample the engine applies is exact anyway. (MP4 does rewrite it every frame, hence its hook.)
+    // Nothing to install yet. Update() holds StartTime directly, which controls the ghost but leaves a
+    // frame-phase error the player sees as a stutter - see the KNOWN BUG note at the top of this file.
     return true;
 #else
     uint64 ptr = Dev::BaseAddress() + UpdatePlaybackTime_RVA;
@@ -189,6 +208,10 @@ class GhostSlot {
     bool started = false;
     int offsetMs = 0;
     int ghostTime = -1;
+    // What the *engine* thinks the ghost's time is, as opposed to what Ghosts2 is asking for. On a record
+    // this plugin drives these two disagree by the frame-phase error, and that disagreement is the whole
+    // stutter - so it has to be observable, or a measurement can only ever confirm our own intention.
+    int engineGhostTime = -1;
 }
 
 bool TimeCtl_ReadRecord(uint64 r, GhostSlot@ slot) {
@@ -204,6 +227,10 @@ bool TimeCtl_ReadRecord(uint64 r, GhostSlot@ slot) {
     // rewritten once per Update to mean exactly that, so subtracting a race clock that has moved on since
     // that write only measures the lag between the write and this read (tens of ms, and it made a held
     // ghost look like it was creeping forward).
+    // Turbo DOES keep an engine-written elapsed, at rec+0x14 - the earlier "no such field on Turbo" note
+    // was wrong. It is the ghost's real playback time: measured 2026-09-08, a ghost held at wanted=8000
+    // read 8033..8074 here across a 6.5 s window while our StartTime writes landed perfectly every frame.
+    slot.engineGhostTime = slot.started ? int(SafeU32(r + O_Rec_EngineElapsed)) : -1;
     auto owned = Clock_Find(r);
     if (owned !is null) {
         slot.ghostTime = slot.started ? int(owned.wanted) : -1;
@@ -213,6 +240,7 @@ bool TimeCtl_ReadRecord(uint64 r, GhostSlot@ slot) {
     }
 #else
     slot.ghostTime = slot.started ? int(uint(SafeU64(r + O_Rec_GhostTime) & 0xffffffff)) : -1;
+    slot.engineGhostTime = slot.ghostTime;   // MP4 drives this field from inside the engine's own tick
 #endif
     return true;
 }
@@ -276,6 +304,24 @@ int TimeCtl_GhostTime(PluginGhost@ pg) {
     GhostSlot slot;
     if (!TimeCtl_Resolve(pg, slot)) return -1;
     return slot.ghostTime;
+}
+
+// The engine's own playback time for this ghost, which is what you actually see on screen. On a record
+// Ghosts2 drives, TimeCtl_GhostTime answers with the time we are *asking* for; comparing the two is the
+// only way to tell whether the ghost is really being held where we think it is.
+int TimeCtl_EngineGhostTime(PluginGhost@ pg) {
+    GhostSlot slot;
+    if (!TimeCtl_Resolve(pg, slot)) return -1;
+    return slot.engineGhostTime;
+}
+
+// How far the rendered ghost is from where Ghosts2 is holding it, in ms (-1 = not measurable). A held ghost
+// should read 0; anything that moves frame to frame is visible as a vibrating car.
+int TimeCtl_HoldError(PluginGhost@ pg) {
+    GhostSlot slot;
+    if (!TimeCtl_Resolve(pg, slot)) return -1;
+    if (slot.ghostTime < 0 || slot.engineGhostTime < 0) return -1;
+    return slot.engineGhostTime - slot.ghostTime;
 }
 
 // --- control ----------------------------------------------------------------
