@@ -21,6 +21,15 @@ namespace Ghosts2 {
             // What the engine renders, and how far that is from where we are holding it (see TimeCtl_HoldError).
             row["engineGhostTime"] = TimeCtl_EngineGhostTime(pg);
             row["holdError"] = TimeCtl_HoldError(pg);
+#if TURBO
+            // Where the car actually is. A held ghost whose clock reads perfectly can still be moving; this
+            // is the number that says whether it is.
+            vec3 gpos;
+            if (TimeCtl_GhostPos(pg, gpos)) {
+                auto pa = Json::Array(); pa.Add(gpos.x); pa.Add(gpos.y); pa.Add(gpos.z);
+                row["pos"] = pa;
+            }
+#endif
             row["paused"] = pg.paused;
             row["speed"] = pg.speed;
             arr.Add(row);
@@ -265,6 +274,34 @@ namespace Ghosts2 {
         return o;
     }
 
+    // Diagnostic: a window of raw words at an address, as hex and as float. Reads only, all guarded. Used to
+    // find what actually moves while a ghost is held - the record clock being exact says nothing about the
+    // pose the renderer ends up with, so the moving quantity has to be found rather than assumed.
+    Json::Value@ ReadWords(const string &in hexAddr, uint count) {
+        auto o = Json::Object();
+        uint64 addr = 0;
+        // Accept an optional 0x prefix: a caller passing a hex string that happens to be all digits would
+        // otherwise have it coerced to a JSON number on the way in.
+        uint start = (hexAddr.Length > 2 && hexAddr.SubStr(0, 2) == "0x") ? 2 : 0;
+        for (uint i = start; i < hexAddr.Length; i++) {
+            int c = hexAddr[i];
+            uint d;
+            if (c >= 48 && c <= 57) d = uint(c - 48);
+            else if (c >= 97 && c <= 102) d = uint(c - 87);
+            else if (c >= 65 && c <= 70) d = uint(c - 55);
+            else { o["error"] = "not hex: " + hexAddr; return o; }
+            addr = addr * 16 + d;
+        }
+        o["addr"] = Text::Format("%llx", addr);
+        if (count > 512) count = 512;
+        // Hex only: a NaN or infinity in this window serialises as `nan`/`inf`, which is not valid JSON and
+        // truncates the whole reply. The caller can reinterpret the bits.
+        auto hex = Json::Array();
+        for (uint i = 0; i < count; i++) hex.Add(Text::Format("%08x", SafeU32(addr + 4 * i)));
+        o["hex"] = hex;
+        return o;
+    }
+
     Json::Value@ State() {
         auto o = Json::Object();
         o["busy"] = g_busy;
@@ -297,6 +334,9 @@ namespace Ghosts2 {
             e["engineNow"] = g_clock[i].engineNow;
             e["tickEst"] = g_clock[i].tickEst;
             e["holdErr"] = g_clock[i].holdErr;
+            e["hookNow"] = g_clock[i].hookNow;
+            e["hookWrote"] = g_clock[i].hookWrote;
+            e["hookStep"] = g_clock[i].hookStep;
             e["holdErrMin"] = g_clock[i].holdErrMin;
             e["holdErrMax"] = g_clock[i].holdErrMax;
 #endif

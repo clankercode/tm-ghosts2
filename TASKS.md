@@ -164,6 +164,17 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
       gone. Measured paused at 9000 over a rolling 600-tick window: `holdErr` 0, min 0, max 0. Playback and
       speed re-checked (1x/2x/0.5x = 3110/6200/1550 ms per 3 s); locked ghosts sit at spread 0. The prologue
       is byte-checked before patching and a mismatch falls back to the `Update()` path
+- [x] ...and that was still not it (user report 2026-09-08, "still stuttery when paused"). The hook site was
+      right; the callback was wrong. Two of the wrapper's three callers (`Physics_Step 0x00e7f4aa`, and
+      `UpdateAsync 0x00e828f0` / `0x00e82916`) run every frame off clocks a few ms apart, so `nowMs` is not
+      monotonic in the callback. 0.7.1 returned on a backwards step, skipping the StartTime write, so the
+      lagging caller rendered from a StartTime one tick stale. Fixed by writing on every call and only
+      integrating forward steps
+- [x] The metric was the real problem: `holdError` reads 0 by construction on the corrected path (the hook
+      derives StartTime from the same `nowMs` the engine subtracts). Ground truth is the rendered pose -
+      `rec+0x04` mobil -> `+0x14` scene mobil -> `+0x84` vis entry -> Iso4 at `+0x86c`, position `+0x890`.
+      Paused at 49.825 that was oscillating **0.67 m**; after the fix **0.00000 m**. Exported as `pos` on
+      each Turbo ghost row and asserted in the smoke suite
 
 ## Turbo spectate: grok's static read, not verified in game (2026-09-08)
 

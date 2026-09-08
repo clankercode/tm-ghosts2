@@ -33,6 +33,7 @@ namespace Ghosts2Mp4Pack {
         if (cmd == "state") return Ok(Ghosts2::State());
         if (cmd == "race_entries") return Ok(Ghosts2::RaceEntries());
         if (cmd == "nod_probe") return Ok(Ghosts2::NodProbe());
+        if (cmd == "read_words") return Ok(Ghosts2::ReadWords(string(args.Get("addr", "0")), uint(args.Get("count", 64))));
         if (cmd == "browse") return Ok(Ghosts2::Browse(string(args.Get("dir", ""))));
         if (cmd == "load_replay") {
             string path = string(args.Get("path", ""));

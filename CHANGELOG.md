@@ -2,6 +2,30 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.7.2 - "Measure the Car, Not the Clock"
+
+The Turbo pause stutter, for real this time - and the reason the last two attempts thought they had fixed it.
+
+- 2026-09-08: **A paused Turbo ghost now actually stands still.** Measured on the vehicle vis entry - the pose
+  the renderer draws - a ghost held at 49.825 was oscillating over **0.67 m** of track. It now reads
+  **0.00000 m** across every sample. The cause was in the hook callback, not the hook site: two of the three
+  callers of the playback tick run every frame off clocks a few milliseconds apart, so `nowMs` arriving in
+  the callback is not monotonic. 0.7.1 treated a backwards step as a bad reading and returned early -
+  skipping the StartTime write - so the lagging caller went on to compute its pose from the leading caller's
+  StartTime, one tick stale. Every call is written now, whichever clock it came from; only the speed
+  integration still cares which direction time moved.
+- 2026-09-08: **The hold error was measuring the wrong thing, which is why 0.7.0 and 0.7.1 both looked
+  fixed.** `holdError` compares the record's elapsed against what we asked for, and the hook derives
+  StartTime from the same `nowMs` the engine then subtracts - so on the corrected path it reads 0 by
+  construction, whatever the car is doing. `ghosts2.list` now reports each Turbo ghost's **rendered world
+  position** (`pos`), reached through the record's mobil, its scene mobil and the vis entry's Iso4. That is
+  the number that answers "is it holding still", and the smoke suite now asserts on it (24 checks on Turbo).
+- 2026-09-08: `ghosts2.read_words` dumps a guarded window of raw memory as hex, which is how the moving
+  quantity was found rather than guessed at.
+
+Speeds re-verified at 1x / 2x / 0.5x / 0.25x (3110 / 6200 / 1550 / 775 ms per 3 s). Smoke 24/24 on Turbo,
+23/23 on ManiaPlanet 4.
+
 ## 0.7.1 - "Bronze, Actually"
 
 Three bug reports against 0.7.0, all from Turbo, all fixed - and one of them had been quietly eating ghosts

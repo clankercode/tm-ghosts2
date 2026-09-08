@@ -252,13 +252,23 @@ What works on Turbo, all measured live on campaign map 003:
   next tick and Turbo ticks ghosts at about 30 Hz. The rolling hold error was −9…+16 ms — small, and still
   visible as a shudder on a paused ghost.
 
-  0.7.1 stops predicting. `TickPlayback` (`0x009116F0`) receives the record in ECX and `nowMs` on the stack;
+  0.7.1 stopped predicting. `TickPlayback` (`0x009116F0`) receives the record in ECX and `nowMs` on the stack;
   five bytes in, at the `MOV EDX,0xF4240` that begins the ms→ns conversion, both values are still in registers
   and the instruction has no relative operand, so it relocates with no padding. Inside the tick
   `StartTime = nowMs - wanted` is not an estimate — `nowMs` is the value the engine is about to use. Measured
-  paused at 9000 over a rolling 600-tick window: hold error 0, min 0, max 0. Playback and speed track too
-  (1x/2x/0.5x measured 3110/6200/1550 ms per 3 s), and locked ghosts sit at spread 0. The prologue is
-  byte-checked before patching; a mismatch falls back to the `Update()` path rather than refusing to run.
+  paused at 9000 over a rolling 600-tick window, the hold error read 0 - and the car still shuddered.
+
+  0.7.2 fixed the callback and stopped trusting that number. Two of the tick's three callers run every frame
+  off clocks a few milliseconds apart, so `nowMs` arriving in the hook is not monotonic; 0.7.1 read a
+  backwards step as a bad reading and returned, skipping the write, so the lagging caller rendered from a
+  StartTime one tick stale. And `holdError` could never have caught it: it compares the record's elapsed
+  against what we asked for, while the hook derives StartTime from the same `nowMs` the engine subtracts, so
+  it reads 0 by construction. The honest measurement is where the car *is* - through the record's mobil to
+  the vis entry's Iso4 - and there a ghost held at 49.825 was oscillating over **0.67 m**. Writing on every
+  call, whichever clock it came from, takes that to **0.00000 m**. `ghosts2.list` reports that position as
+  `pos`, and the smoke suite asserts on it. Playback and speed track (1x/2x/0.5x/0.25x measured
+  3110/6200/1550/775 ms per 3 s), and locked ghosts sit at spread 0. The prologue is byte-checked before
+  patching; a mismatch falls back to the `Update()` path rather than refusing to run.
 
   The 0.5.0 note claiming this was "measured exact" was self-confirming — Ghosts2 reports an owned ghost's
   time as the value it is *asking* for, so the old measurement compared our intention against itself.

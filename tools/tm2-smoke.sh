@@ -166,6 +166,16 @@ else
   if [[ "$a" == "$b" && "${a:-0}" -gt 0 ]]; then ok "paused ghost does not advance ($a ms held for 3 s)"
   elif [[ "$a" == "$b" ]]; then bad "pause check was trivial: ghost sat at ${a} ms"
   else bad "paused ghost advanced $a -> $b"; fi
+  # The clock reading "held" is not the same as the car standing still, and believing it twice is how the
+  # Turbo stutter survived two releases. On Turbo, check where the ghost actually is on track.
+  if [[ "$GAME" == "turbo" ]]; then
+    p0="$(ghosts | jq_ "next(g.get('pos') for g in d if g['instId'] == $id)")"
+    sleep 2
+    p1="$(ghosts | jq_ "next(g.get('pos') for g in d if g['instId'] == $id)")"
+    if [[ -z "$p0" || "$p0" == "None" ]]; then bad "no rendered position for the paused ghost (pose chain broken?)"
+    elif [[ "$p0" == "$p1" ]]; then ok "paused ghost does not move on track (held at $p0 for 2 s)"
+    else bad "paused ghost moved on track: $p0 -> $p1"; fi
+  fi
   # every locked member must sit at the same time
   spread="$(ghosts | jq_ "max(g['ghostTime'] for g in d if g['ghostTime'] >= 0) - min(g['ghostTime'] for g in d if g['ghostTime'] >= 0)")"
   if [[ "${spread:-99}" -le 2 ]]; then ok "locked ghosts are in sync (spread ${spread} ms)"; else bad "locked ghosts drifted ${spread} ms apart"; fi

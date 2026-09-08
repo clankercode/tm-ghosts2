@@ -36,17 +36,43 @@ const uint64 O_Rec_InstId = 0x24;
 const uint64 O_Rec_EngineElapsed = 0x14;   // engine-written playback time (see TimeCtl_ReadRecord)
 const bool ClockNeedsHook = false;   // the Update path works without one; the hook below is an upgrade, not a requirement
 
-// Turbo's playback tick: TickPlayback(ECX = record, [ESP+4] = nowMs) at 0x009116f0 turns ms into ns and
-// calls the record writer at 0x00910c40 (which reads rec+0x04 ghost and rec+0x10 started, so the shape is
-// confirmed). Hooking the MOV EDX,1000000 at +0x0d is the one instruction where both values this plugin
-// needs are already in registers - ECX is still the record and EAX is still nowMs, on both branches above
-// it - and it is five bytes of MOV with no relative operand, so it relocates with no padding.
+// Turbo's playback tick. The wrapper RaceGhostRecord_TickPlayback (0x009116f0) takes nowMs, scales it to
+// nanoseconds and calls the record writer 0x00910c40, which does the only arithmetic that matters:
+//
+//   910c65  mov  ecx,[esi+0x0c]  ; ECX = StartTime
+//   910c6c  sub  eax,ecx         ; EAX = nowMs - StartTime
+//   910c76  mov  [esi+0x14],eax  ; elapsed
+//   910c8e  call 0x00910ca0      ; ApplySamples - takes ECX, so the *pose* comes from StartTime as read here
+//
+// So StartTime has to be correct before 0x910c65 runs, and rec+0x14 is a report rather than the thing that
+// moves the car. Hooking the MOV EDX,1000000 at 0x009116fd is the place: five bytes, no relative operand,
+// and there ECX is still the record and EAX still nowMs for every one of the wrapper's three callers
+// (Physics_Step 0x00e7f4aa, and UpdateAsync 0x00e828f0 / 0x00e82916). Hooking the writer itself is worse:
+// at its entry the arguments are on the stack, and by the one point where nowMs is back in a register
+// (0x910c65, after the ns/1e6 divide) the StartTime read is already inside the relocated block.
 //
 // Why bother, when Update() already holds the clock: writing from Update() means predicting the engine's
 // next tick, and Turbo ticks ghosts at about 30 Hz. Measured paused at a steady frame rate, the prediction
 // left a rolling hold error of -9..+16 ms - roughly 0.6 m of position wobble - which is the stutter that
 // survived 0.7.0. Inside the tick there is nothing to predict: nowMs is the value the engine is about to
 // use, so StartTime = nowMs - wanted is exact.
+//
+// The catch that survived into 0.7.1: two of those callers run every frame off clocks a few milliseconds
+// apart, so nowMs arriving here is *not* monotonic. 0.7.1 read a backwards step as a bad reading and
+// returned - skipping the write - so the lagging caller then computed its pose from the leading caller's
+// StartTime. Measured on the vehicle vis entry of a paused ghost, that left the car oscillating over 0.67 m
+// of track. Every call has to be written, whichever clock it came from; only the speed integration needs to
+// care about direction.
+// Where the ghost actually ends up on track, which is the only honest test of "is it holding still": the
+// record's mobil (rec+0x04) owns a scene mobil (+0x14) whose vis entry (+0x84) carries the pose the renderer
+// draws - an Iso4 at +0x86c, position in its last three floats at +0x890. Reading it is how the 0.7.1
+// residual was measured (0.67 m of oscillation on a ghost that reported a hold error of 0) and how this fix
+// was confirmed (0.00000 m). Every step is a guarded read; a broken link just yields no position.
+const uint64 O_Rec_Mobil = 0x04;
+const uint64 O_Mobil_SceneMobil = 0x14;
+const uint64 O_SceneMobil_Vis = 0x84;
+const uint64 O_Vis_Position = 0x890;
+
 const uint64 TurboTick_RVA = 0x5116fd;
 const string TurboTick_Prologue = "BA 40 42 0F 00";   // MOV EDX, 0x000F4240
 #else
@@ -110,6 +136,11 @@ class ClockEntry {
     int holdErrMin = 0;
     int holdErrMax = 0;
     uint holdErrFrames = 0;
+    // Hook-side witnesses: what the callback last saw and wrote. hookStep is signed on purpose - a negative
+    // value is the lagging caller, and seeing it is how the 0.7.1 skipped-write bug was found.
+    uint hookNow = 0;
+    uint hookWrote = 0;
+    int hookStep = 0;
 #endif
 }
 array<ClockEntry@> g_clock;
@@ -150,18 +181,27 @@ void OnTurboTickPlayback(uint64 ecx, uint64 eax) {
     for (uint i = 0; i < g_clock.Length; i++) {
         auto e = g_clock[i];
         if (e.rec != ecx) continue;
-        // Refuse a clock that cannot be the one we have been following. This is the guard that makes a
-        // wrong register mapping harmless rather than destructive.
-        if (e.lastNowMs != 0) {
+        // Two of the callers run every frame off clocks a few ms apart, so nowMs is *not* monotonic
+        // here. Integrate only forward steps - whichever clock leads supplies them, and they still sum to one
+        // frame's worth - but write on every call regardless. The last write of a frame is the one the
+        // renderer draws from, and skipping the lagging caller is exactly what left the wobble in 0.7.1.
+        // Matching the record pointer first is also the guard that makes a wrong register mapping harmless.
+        if (e.lastNowMs == 0) {
+            e.lastNowMs = nowMs;
+        } else {
             int64 step = int64(nowMs) - int64(e.lastNowMs);
-            if (step < 0 || step > 5000) return;
+            e.hookStep = int(step);
+            if (step > 0 && step <= 5000) {
+                if (!e.paused) e.wanted += double(step) * e.speed;
+                e.lastNowMs = nowMs;
+            }
         }
-        if (e.lastNowMs != 0 && nowMs > e.lastNowMs && !e.paused) e.wanted += double(nowMs - e.lastNowMs) * e.speed;
-        e.lastNowMs = nowMs;
         if (e.wanted < 0) e.wanted = 0;
         uint w = uint(e.wanted);
         if (w > nowMs) w = nowMs;
         Dev::Write(e.rec + O_Rec_StartTime, uint(nowMs - w));
+        e.hookNow = nowMs;
+        e.hookWrote = uint(nowMs - w);
         e.wantedAtWrite = double(w);
         g_timeCtlWrites++;
         g_turboHookTicks++;
@@ -186,8 +226,8 @@ bool TimeCtl_InstallHook() {
         warn("Ghosts2: " + g_timeCtlLastErr);
         return true;
     }
-    // EAX carries nowMs here, so it must not be the hook's scratch register; EBX is untouched by this
-    // function. Padding 0: the relocated instruction is exactly the five bytes the jump needs.
+    // EAX carries nowMs and ECX the record, so neither may be the hook's scratch register; EBX is untouched
+    // by this function. Padding 0: the relocated instruction is exactly the five bytes the jump needs.
     @g_clockHook = Dev::Hook(tptr, 0, "OnTurboTickPlayback", Dev::PushRegisters::SSE, Dev::FreeRegister::Rbx);
     if (g_clockHook is null) {
         g_timeCtlLastErr = "Dev::Hook (playback tick) failed; holding the clock from Update() instead";
@@ -348,6 +388,27 @@ bool TimeCtl_ResolveEngine(CTrackManiaRace@ race, uint64 ghostNod, GhostSlot@ sl
     }
     return false;
 }
+
+#if TURBO
+// The rendered world position of a ghost, or false if the chain is not built yet (it is not until the ghost
+// has actually started playing).
+bool TimeCtl_GhostPos(PluginGhost@ pg, vec3 &out pos) {
+    GhostSlot slot;
+    if (!TimeCtl_Resolve(pg, slot) || slot.rec == 0) return false;
+    uint64 mobil = SafePtr(slot.rec + O_Rec_Mobil);
+    if (mobil == 0) return false;
+    uint64 scene = SafePtr(mobil + O_Mobil_SceneMobil);
+    if (scene == 0) return false;
+    uint64 vis = SafePtr(scene + O_SceneMobil_Vis);
+    if (vis == 0) return false;
+    try {
+        pos = vec3(Dev::SafeReadFloat(vis + O_Vis_Position),
+                   Dev::SafeReadFloat(vis + O_Vis_Position + 4),
+                   Dev::SafeReadFloat(vis + O_Vis_Position + 8));
+    } catch { return false; }
+    return true;
+}
+#endif
 
 // Bumped once per TimeCtl_Update, so Update, Render and RenderInterface of the same frame share one answer.
 // Never 0: that is the "not resolved yet" value on a fresh PluginGhost.
