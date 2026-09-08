@@ -52,6 +52,10 @@ namespace Ghosts2Mp4Pack {
             Ghosts2::SetCameraType(uint(args.Get("type", 0)));
             return OkTrue();
         }
+        if (cmd == "turbo_cam") {
+            string kind = string(args.Get("kind", ""));
+            return Ghosts2::SetTurboSpectateCam(kind) ? OkTrue() : Err("no camera named '" + kind + "' in this playground (see state.turboCams)");
+        }
         if (cmd == "lock") {
             Ghosts2::SetLockAll(bool(args.Get("all", true)));
             return OkTrue();

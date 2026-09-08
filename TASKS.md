@@ -88,13 +88,18 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
       from `DataMgr.Ghosts` and the record table instead, which needs no such url
 - [x] The "no ghosts to test with" blocker is gone: the campaign flow preloads the medal ghosts locally and
       `RetrieveRecords` returns the map's five rows offline, Max's own PB included
-- [ ] (grok) **Turbo spectating** - the one missing feature. `CGamePlaygroundUIConfig` has no
-      `SpectatorForcedTarget`/`ForceSpectator`/`SpectatorForceCameraType`. The camera set is reachable and
-      writable (`CurrentPlayground.GameTerminals[0].CameraSet.CamsMaster`, `CurrentCam`,
-      `ManagedCams[i].FollowedGameMobilId`) and the writes land, but a race ghost's instance id is **not** a
-      `GameMobilId` (the local player's own mobil reports 0). Needed: the ghost → `GameMobilId` mapping.
-      `src/CameraTarget.as` has the plumbing behind `TurboCameraTargetResolved`; flip it when the mapping
-      is known
+- [~] **Turbo spectating — target solved, camera not.** A race ghost's instance id is not a `GameMobilId`;
+      the ghost's mobil carries the instance id in `CGameMobil.ReplicaId` and the cameras follow
+      `CGameMobil.GameMobilId`, so `CGameCtnPlayground.GameScene.GameMobils` is the translation. Measured on
+      campaign 001: `instId 0x0FE0000A` → `GameMobilId 11`, written to all seven managed cameras, and it
+      sticks
+- [ ] (grok) **What does `CGameControlCameraTrackManiaRace3` read for its target?** It ignores
+      `FollowedGameMobilId`. Ruled out from the script surface: `CamsMaster.CurrentCam` is an index into
+      `ManagedCams` (it always matches the `IsActive` entry) but the engine overwrites it every frame even
+      when re-asserted from `Update()`; `CGameTerminal.SpectatorCameraType` changes nothing;
+      `CGamePlayerCameraSet.DefaultCam` accepts a new `EGameCam` without changing the active camera; and
+      `CGamePlaygroundSpectating` has no script fields. Turbo needs MP4's approach - a hook on the camera's
+      target resolver (MP4's is `CamResolveTarget` at RVA `0xb44740`, `src/CameraTarget.as`)
 - [ ] Turbo engine race ghosts (the game's own medal opponents) list with `instId 0` and no resolvable
       playback record. MP4 resolves them from `race+0x1080/0x1088`; on Turbo `race+0x59c/0x5a0` are
       *wrappers* rather than records, so the record pointer is probably one indirection away
@@ -132,28 +137,18 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
 - [x] Trap found doing it: `Meta::ExecutingPlugin()` called inside an export resolves to the **caller's**
       plugin. Capture anything about "this plugin" at module init (`PluginVersion` in `Main.as`)
 
-## Turbo playback stutter (open, 2026-09-08)
+## Turbo playback stutter (fixed, 2026-09-08)
 
-- [x] Reproduced and quantified. Ghost held at `wanted` 8000 ms, race clock provably advancing over a 6560 ms
-      window: our `rec+0x0C` writes landed every frame, but the engine's own elapsed (`rec+0x14`) read
-      8033..8074 - ~45 ms mean lag, ~40 ms jitter, about a metre of wobble at speed.
-- [x] Cause: `TimeCtl_WriteClocks` sets `StartTime = RaceNow - wanted` from `Update()`. The engine renders
-      `elapsed = EngineNow - StartTime` at its own tick, so the result carries the varying phase difference.
-      "Nothing overwrites our StartTime" (true) is not "our StartTime is right at render time" (false).
-- [x] Why 0.5.0 missed it: `TimeCtl_GhostTime` returns `owned.wanted` for a driven record, so every
-      measurement compared our intention against itself. Fixed by exposing `engineGhostTime` / `holdError`.
-- [ ] **The fix: hook the engine tick that consumes the clock and write `StartTime` there** (what MP4 does
-      with `RaceGhostRecord_UpdatePlaybackTime`). Blocked on identifying that tick on Turbo:
-      - `Race_UpdateActiveGhostPlayback` 0x00EB4980 (thiscall, ECX = TmRaceRules) is the vis apply, but it
-        walks ghost *nods* at `[rules+0x11d0]+0x590` using `ghost+0x1BC` as the clock - not the record array.
-        Prologue verified live and statically: `83 EC 20 8B 81 D0 11 00 00 89 0C 24 85 C0 0F 84`.
-      - `RaceGhost_ComputeElapsed` 0x0090F8F0 (cdecl, [esp+4]=rec, [esp+8]=now) is called only from
-        `RaceGhost_GetCurCheckpoint` and discards its sample index - not a per-frame path.
-      - **Unlocated: whoever stores `rec+0x14`.** That is the tick our writes demonstrably feed, so it is the
-        right hook. grok is looking for the store statically.
-      - Do not hook speculatively; gate any hook on the prologue bytes the way the MP4 one is.
-- [ ] Turbo pauses whenever its window loses focus, which makes live measurement from an agent session flaky
-      (every foreground shell command can steal focus). `tm-no-auto-pause` should remove this.
+- [x] Root cause: `rules.Now` is not the engine's playback clock. Measured over 90 samples with a ghost held
+      at 8000, `EngineNow - RaceNow` ran −88…−39 ms and the rendered elapsed wandered 8017–8123
+- [x] Fix without a hook: recover the engine's clock from the record itself
+      (`EngineNow = writtenStart + elapsed` at `rec+0x14`), integrate `wanted` with the engine's tick delta,
+      and aim the write one tick ahead. Rendered spread 106 ms → 56–62 ms at ~17 fps
+- [x] `holdErr` / `holdErrMin` / `holdErrMax` / `tickEst` exported per owned clock, so the error is
+      measurable rather than self-confirming
+- [ ] Optional: grok located the `rec+0x14` writer at `0x00910C40` (`TickPlayback 0x009116F0`). An MP4-style
+      hook there would remove the remaining tick-length jitter entirely. Not needed for the current fix, and
+      not worth a speculative hook — revisit only if the residual is ever visible at a normal frame rate
 
 ## Player feedback (Juesto, against 0.2.0)
 

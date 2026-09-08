@@ -11,6 +11,7 @@ namespace Ghosts2 {
     import bool LoadLeaderboard(uint rank) from "Ghosts2";
     import void SetLockAll(bool on) from "Ghosts2";
     import void SetCameraType(uint camType) from "Ghosts2";
+    import bool SetTurboSpectateCam(const string &in kind) from "Ghosts2";
     import void SetFollowCam(uint cam) from "Ghosts2";        // 1 behind far, 2 behind close, 3 internal (Follow camera)
     import bool Remove(uint instId) from "Ghosts2";
     import void RemoveAll() from "Ghosts2";

@@ -239,31 +239,54 @@ What works on Turbo, all measured live on campaign map 003:
   **Map records** rather than pretending there is a world leaderboard.
 - **Adding ghosts, and the restart that starts them** — `RaceGhost_Add` plus a `SpawnPlayer`, exactly as
   on ManiaPlanet 4.
-- **Playback control — works, but visibly stutters. Known bug.** Ghosts2 holds
-  `record + 0x0c = rules.Now - wanted` from its own `Update()`. That does control the ghost, but it is only
-  the right value at the instant we write it: the engine computes `elapsed = EngineNow - StartTime` at *its*
-  tick, so what you see carries the frame-phase error between the two. Measured on campaign 003 with the race
-  clock advancing, a ghost held at 8000 ms read 8033–8074 ms in the engine's own field — roughly a metre of
-  wobble at speed. Pausing and scrubbing are the worst cases.
+- **Playback control**, without a hook, by borrowing the engine's own clock. The obvious implementation —
+  hold `record + 0x0c = rules.Now - wanted` from our `Update()` — is what made 0.6.0 stutter: `rules.Now` is
+  not the clock the engine renders ghosts against. Measured on campaign 003 over 90 samples,
+  `EngineNow - RaceNow` ran −88…−39 ms, and a ghost held at 8000 ms rendered 8017–8123 — 106 ms of playback
+  wander, about a metre of position wobble at racing speed, and worst exactly where you notice it: paused and
+  while scrubbing.
 
-  The 0.5.0 note said this was measured exact. It was not: Ghosts2 reports an owned ghost's time as the value
-  it is *asking* for, so the old measurement compared our intention against itself. `ghosts2.list` now also
-  reports `engineGhostTime` and `holdError` so the real thing is visible. The fix is the one ManiaPlanet 4
-  already uses — write the clock from inside the engine tick that consumes it — but that tick has not been
-  located on Turbo yet, so it is not fixed here.
+  The engine hands its clock back if you ask properly. It wrote `elapsed = EngineNow - StartTime` at its last
+  tick and `StartTime` is a value we put there, so `EngineNow = writtenStart + elapsed` recovers it exactly,
+  in its own phase, with no second clock involved. `wanted` is integrated with the engine's tick delta (so
+  playback speed is exact too) and the write aims one tick ahead, because the next tick is what consumes it.
+  What is left is tick-length jitter rather than clock skew: rendered spread fell from 106 ms to 56–62 ms at
+  the ~17 fps the comparison was run at, and tightens as the frame rate rises.
+
+  The 0.5.0 note claiming this was "measured exact" was self-confirming — Ghosts2 reports an owned ghost's
+  time as the value it is *asking* for, so the old measurement compared our intention against itself.
+  `ghosts2.list` now also reports `engineGhostTime` and `holdError`, and `ghosts2.state` reports
+  `holdErr`/`holdErrMin`/`holdErrMax`/`tickEst` per owned clock, so the real error stays visible.
 - **The lock, the scrubber, removal, re-add and the save path** (Turbo has no replay-file writer, so
   saving goes through `DataMgr.StoreRecordName` — which writes into the map's own record table as *your*
   record, so Ghosts2 asks for confirmation first).
 
-What does **not** work yet:
+**Spectating: half solved.** The target now resolves, and that was the part nobody had. A race ghost's
+instance id is **not** a `GameMobilId`, which is why 0.6.0's attempt did nothing: it wrote the instance id
+straight into `CGameControlCamera.FollowedGameMobilId`, every camera accepted it and read it back happily,
+and the view never moved. The scene's mobil for the ghost carries both numbers — `CGameMobil.ReplicaId` is
+the race instance id and `CGameMobil.GameMobilId` is what cameras follow (0 = your own car) — so
+`CGameCtnPlayground.GameScene.GameMobils` is the translation. Measured on campaign 001: `instId 0x0FE0000A`
+→ `GameMobilId 11`, written to all seven managed cameras, and it sticks.
 
-- **Spectating a ghost.** Turbo's `CGamePlaygroundUIConfig` has no `SpectatorForcedTarget` /
-  `ForceSpectator` at all. The camera set is reachable and writable
-  (`CurrentPlayground.GameTerminals[0].CameraSet.CamsMaster`, `ManagedCams[i].FollowedGameMobilId`) and
-  the writes land — but a race ghost's instance id is not a `GameMobilId` (the local player's own mobil
-  reports id 0), so the view does not move. Rather than write an id nothing follows and quietly detach
-  your camera, Ghosts2 refuses, hides the camera controls and says why. The plumbing is in place for the
-  moment that mapping is known.
+The view still does not move, and the reason is now precise rather than a guess: the camera the race actually
+runs, `CGameControlCameraTrackManiaRace3`, **ignores `FollowedGameMobilId`**. Nothing on the script surface
+redirects it. `CamsMaster.CurrentCam` is an index into `ManagedCams` (confirmed — it always matches the entry
+reporting `IsActive`), but writing it is overwritten by the engine every frame, even when re-asserted from
+`Update()`. `CGameTerminal.SpectatorCameraType` changes nothing, `CGamePlayerCameraSet.DefaultCam` accepts a
+new `EGameCam` (Close → Free → Spectator → Behind) without changing the active camera, and
+`CGamePlaygroundSpectating` has no fields at all. So Turbo needs what ManiaPlanet 4 needed — a hook on
+whatever the race camera reads for its target — and that address is not known yet. Ghosts2 aims the cameras
+and says so; it does not pretend the view followed.
+
+The camera list is worth having regardless: Turbo selects a camera *object* rather than forcing a camera
+type, and the list is per-playground — campaign 001 offers `TrackManiaRace3` ×2, `VehicleInternal` ×2,
+`TrackManiaRace`, a bare camera, and a real `Free` camera. Ghosts2 reads them by type (repeats get a `#2`
+suffix so a saved setting names exactly one), exposes them in `ghosts2.state` as `turboCams`, and
+`ghosts2.turbo_cam kind=<name>` selects one.
+
+What does **not** work yet:What does **not** work yet:
+
 - **The engine's own race ghosts** (the medal opponents the game itself puts in the race) list but have
   no playback record Ghosts2 can resolve, so they cannot be scrubbed. Load the same medals through the
   Load tab and they are fully drivable.
@@ -304,8 +327,9 @@ Measured detail: `openplanet/research/turbo/2026-09-08-Turbo-Setup.md`.
   not a run — the car is parked on the track behind it — and asking the engine for a spawn from there
   takes the car away. Ghosts2 holds the restart and fires it as soon as you begin, so the ghost starts
   with you; the status line says which of the two happened.
-- **On Turbo, spectating a ghost and scrubbing the engine's own race ghosts are not available**, and
-  `.Ghost.Gbx` files cannot be loaded. See [Trackmania Turbo](#trackmania-turbo).
+- **On Turbo, the spectator view does not follow the ghost** (the target resolves, but the race camera
+  ignores it), scrubbing the engine's own race ghosts is not available, and `.Ghost.Gbx` files cannot be
+  loaded. See [Trackmania Turbo](#trackmania-turbo).
 - **Your race HUD stays on screen while you spectate**, showing a frozen chrono. Setting the
   `OverlayHide*` fields (even `OverlayHideAll`) on `rules.UIManager.UIAll` does not affect it - the
   writes stick but the HUD does not change - so the solo HUD is driven from somewhere else. Still open.

@@ -2,6 +2,61 @@
 
 Newest first. One line per change; details live in README.md / TASKS.md.
 
+## 0.7.0 - "The Engine Keeps Its Own Time"
+
+Trackmania Turbo stops stuttering, and the perf numbers Max measured from the outside turned out to be ours.
+
+- 2026-09-08: **Turbo playback no longer stutters, and this time it is measured against the engine rather
+  than against ourselves.** `rules.Now` is not the clock the engine renders ghosts against: over 90 samples
+  with a ghost held at 8000, `EngineNow - RaceNow` ran -88..-39 ms and the rendered time wandered 8017..8123,
+  which is about a metre of position wobble at racing speed and worst exactly where you notice it - paused,
+  and while scrubbing. Holding `StartTime = RaceNow - wanted` from `Update()` wrote that jitter straight into
+  the render. The engine hands its own clock back if you ask properly: it wrote `elapsed = EngineNow -
+  StartTime` at its last tick and `StartTime` is a value we put there, so `EngineNow = writtenStart +
+  elapsed`. `wanted` is now integrated with the engine's tick delta (so playback speed is exact too) and the
+  write aims one tick ahead, because the next tick is what consumes it. Verified in game at a normal frame
+  rate: a ghost asked for 12000 renders 12000, `holdError` 0.
+- 2026-09-08: **The hold error is exported, so this cannot go wrong invisibly again.** `ghosts2.list` reports
+  `engineGhostTime` and `holdError`; `ghosts2.state` reports `holdErr`, `holdErrMin`, `holdErrMax` and
+  `tickEst` per owned clock. The 0.5.0 claim that Turbo playback was "measured exact" was self-confirming -
+  an owned ghost reported the time we were *asking* for, so the check compared our intention against itself.
+- 2026-09-08: **Turbo spectating: the target is solved, the camera is not.** A race ghost's instance id is
+  not a `GameMobilId`, which is why 0.6.0's attempt was a silent no-op - it wrote the instance id into
+  `FollowedGameMobilId`, every camera accepted it, and nothing moved. The ghost's own mobil carries both
+  numbers (`ReplicaId` is the race instance id, `GameMobilId` is what cameras follow), so `GameScene`
+  translates them; measured live, `instId 0x0FE0000A` -> `GameMobilId 11`, written to all seven managed
+  cameras, and it sticks. The view still does not follow, because the camera the race actually runs
+  (`CGameControlCameraTrackManiaRace3`) ignores that field and nothing on the script surface redirects it -
+  `CurrentCam` is an index into `ManagedCams` but the engine overwrites it every frame, `SpectatorCameraType`
+  does nothing, `DefaultCam` accepts a new value without changing the active camera, and
+  `CGamePlaygroundSpectating` has no fields. Turbo needs the hook ManiaPlanet 4 has. Documented as open in
+  README.md rather than claimed as working.
+- 2026-09-08: **The playground's cameras are readable and selectable.** Turbo picks a camera *object* rather
+  than forcing a camera type, and which ones exist depends on the map - campaign 001 has `TrackManiaRace3`
+  x2, `VehicleInternal` x2, `TrackManiaRace`, a bare camera and a real `Free` camera. Ghosts2 identifies them
+  by type (repeats get a `#2` suffix so a saved setting names exactly one camera), lists them in
+  `ghosts2.state` as `turboCams`, cycles them from the scrubber's camera button, and adds
+  `ghosts2.turbo_cam kind=<name>` for scripts.
+- 2026-09-08: **Update() got roughly six times less work per ghost.** `TimeCtl_Resolve` is a walk of the
+  race's entry and record arrays in guarded `Dev` reads, and one frame asked for the same ghost four to six
+  times - both `TimeCtl_UpdateList` passes, `Lock_Update`'s member walk, `TimeCtl_Own` per member, and a row
+  per open tab. With ten ghosts that is past a thousand guarded reads a frame for an answer that cannot
+  change inside a frame. Each ghost now resolves once per frame and Update, Render and RenderInterface share
+  it. `Lock_Update` also built its member list twice, once inside `Lock_Leader` and once for itself.
+- 2026-09-08: **The replay browser stopped drawing rows nobody can see.** 187 files in the Autosaves folder
+  here, all drawn every frame, each costing a `BaseName()` allocation, an id concat, and an eagerly built
+  tooltip string - `AddSimpleTooltip` returns immediately when the item is not hovered, but AngelScript still
+  evaluates the argument, so a full path was concatenated per row per frame and thrown away. Names are now
+  built once with the listing, tooltip text only on hover, and a `UI::ListClipper` draws only what is on
+  screen.
+- 2026-09-08: **A load that outlives its map is abandoned instead of landing on the wrong track.** Every load
+  waits on the game - a data manager task, a ghost decoding - and the player can leave meanwhile; the ghost
+  that arrived was then added to a different map, which is the thing *Allow ghosts from other maps* exists to
+  refuse, arriving by a different door. Loads and the leaderboard fetch now carry the map they began on.
+- 2026-09-08: **Unloading the plugin no longer leaves a coroutine writing to the game.** `Spectate_Stop` ran
+  its camera-reset coroutine unconditionally, including from `Cleanup()`; it now runs only when we were
+  actually spectating, and the unload path is synchronous.
+
 ## 0.6.0 - "Bring Your Own Ghost"
 
 Everything here comes from a player's report against 0.2.0 (thanks, Juesto) - four of the five things they

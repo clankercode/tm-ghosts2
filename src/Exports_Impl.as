@@ -100,6 +100,20 @@ namespace Ghosts2 {
 
     void SetLockAll(bool on) { Lock_Set(on); }
     void SetCameraType(uint camType) { Spectate_SetCameraType(camType); }
+
+    // Turbo: which of this playground's cameras follows a spectated ghost, named as State()'s `turboCams`
+    // lists them ("Free", "VehicleInternal#2", ...). Empty leaves the game's own choice alone. False when
+    // this playground has no camera by that name. Present on both games so one command pack serves both;
+    // ManiaPlanet 4 forces a camera *type* instead (SetCameraType), so it answers false there.
+    bool SetTurboSpectateCam(const string &in kind) {
+#if TURBO
+        if (kind.Length > 0 && CamTarget_TurboCamIndex(kind) < 0) return false;
+        S_TurboSpectateCam = kind;
+        return CamTarget_SetTurboCamKind(kind);
+#else
+        return false;
+#endif
+    }
     void SetFollowCam(uint cam) { S_SpectateFollowCam = Math::Clamp(cam, 1, 3); }   // Follow spectator camera: 1 far, 2 close, 3 internal
 
     bool Remove(uint instId) {
