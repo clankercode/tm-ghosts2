@@ -93,8 +93,18 @@ the playground is a `CTrackManiaRaceNew` driven by a real `CTrackManiaRaceRules`
       `CGameMobil.GameMobilId`, so `CGameCtnPlayground.GameScene.GameMobils` is the translation. Measured on
       campaign 001: `instId 0x0FE0000A` → `GameMobilId 11`, written to all seven managed cameras, and it
       sticks
-- [ ] (grok) **What does `CGameControlCameraTrackManiaRace3` read for its target?** It ignores
-      `FollowedGameMobilId`. Ruled out from the script surface: `CamsMaster.CurrentCam` is an index into
+- [ ] **Turbo spectate view-lock — mechanism now known, fix not written.** Per grok's static read of
+      `CGameControlCameraTrackManiaRace3_Update` (`0x00d8f890`, Turbo; *their* analysis, not verified here):
+      the camera *does* read `FollowedGameMobilId` and resolve it with `FindSceneMobilByGameMobilId`, then
+      refuses to follow unless `this+0xA4 != 0`, `SceneMobil+0x0C != 0`, **and the vis is a
+      `CSceneMgrVehicleVis` (`IsKindOf 0xA037000`)**. A ghost's SceneMobil fails that last check, which is
+      exactly why the id sticks on all seven cameras and the view never moves - the write was never the
+      problem. Two routes worth trying, cheapest first: (a) the **Free camera** (`ManagedCams` index 6) is
+      reported not to have that gate, so it may follow a ghost as-is - but the engine overwrites a scripted
+      `CurrentCam` every frame, so something has to make Free the active camera; (b) hook the gate the way
+      MP4 hooks `CameraSystem_ResolveTarget` (`0x140b44740`). Nothing here is verified in game yet
+- [ ] ~~What does `CGameControlCameraTrackManiaRace3` read for its target?~~ Answered above. It ignores
+      `FollowedGameMobilId` in *effect*, not by not reading it. Ruled out from the script surface: `CamsMaster.CurrentCam` is an index into
       `ManagedCams` (it always matches the `IsActive` entry) but the engine overwrites it every frame even
       when re-asserted from `Update()`; `CGameTerminal.SpectatorCameraType` changes nothing;
       `CGamePlayerCameraSet.DefaultCam` accepts a new `EGameCam` without changing the active camera; and
