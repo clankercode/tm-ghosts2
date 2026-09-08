@@ -5,6 +5,18 @@
 bool g_busy = false;
 string g_status = "";
 
+// Every load waits on the game - a data manager task, a ghost decoding - and the player can leave the map
+// while it waits. The ghost that finally arrives then belongs to a track they are no longer on, and adding it
+// drops a foreign racing line into the race: the same mistake "Allow ghosts from other maps" exists to refuse,
+// arriving by a different door. So a load remembers the map it began on and abandons itself once that changes.
+string g_loadForMapUid = "";
+
+void LoadBegin() { g_busy = true; g_loadForMapUid = CurrentMapUid(); }
+void LoadEnd() { g_busy = false; g_loadForMapUid = ""; }
+
+// False once the player has left the map this load was started for.
+bool LoadStillWanted() { return g_loadForMapUid.Length > 0 && CurrentMapUid() == g_loadForMapUid; }
+
 void SetStatus(const string &in msg, bool notify = false, bool isError = false) {
     // A load nobody asked for reports through the status line and an ordinary log line (see AutoLoad_Update):
     // no notification, and not a warning either - "this map has no personal best yet" is unremarkable, and
@@ -182,9 +194,9 @@ void Load_ReplayFile(const string &in path) {
 }
 
 void Load_ReplayFileCoro(const string &in path) {
-    g_busy = true;
+    LoadBegin();
     LoadReplayInner(path);
-    g_busy = false;
+    LoadEnd();
 }
 
 void LoadReplayInner(const string &in path) {
@@ -205,7 +217,8 @@ void LoadReplayInner(const string &in path) {
         return;
     }
     uint deadline = Time::Now + 20000;
-    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
     if (g.DataState != CGameGhostScript::EDataState::Ready) {
         SetStatus("GhostRetrieve returned " + tostring(g.DataState) + " for " + BaseName(path) + ".", true, true);
         return;
@@ -235,7 +248,8 @@ void LoadReplayInner(const string &in path) {
         SetStatus("Replay_Load returned null for " + path, true, true);
         return;
     }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
 
     if (task.HasSucceeded) {
         uint added = 0;
@@ -258,9 +272,9 @@ void Load_PersonalBest() {
 }
 
 void Load_PersonalBestCoro() {
-    g_busy = true;
+    LoadBegin();
     LoadPbInner();
-    g_busy = false;
+    LoadEnd();
 }
 
 void Load_Medal(uint level) {
@@ -270,9 +284,9 @@ void Load_Medal(uint level) {
 
 void Load_MedalCoro(const string &in levelStr) {
     uint level = Text::ParseUInt(levelStr);
-    g_busy = true;
+    LoadBegin();
     LoadMedalInner(level);
-    g_busy = false;
+    LoadEnd();
 }
 
 string MedalName(uint level) {
@@ -330,7 +344,8 @@ CGameGhostScript@ Turbo_RetrieveMedalFromRecords(uint level) {
     SetStatus("Looking for the " + needle + " ghost in this map's records ...");
     dm.RetrieveRecords(map.MapInfo, LocalUserId());
     uint deadline = Time::Now + 20000;
-    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline) yield();
+    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return null; }
     if (dm.LatestResult != CGameDataManagerScript::EResult::Finished_Ok) return null;
     string url;
     for (uint i = 0; i < dm.Records.Length; i++) {
@@ -344,7 +359,8 @@ CGameGhostScript@ Turbo_RetrieveMedalFromRecords(uint level) {
     auto g = dm.GhostRetrieve(url);
     if (g is null) return null;
     deadline = Time::Now + 20000;
-    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return null; }
     return g.DataState == CGameGhostScript::EDataState::Ready ? g : null;
 }
 #endif
@@ -404,7 +420,8 @@ void LoadMedalInner(uint level) {
         SetStatus("Map_GetMultiAsyncLevelRecordGhost returned null.", true, true);
         return;
     }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
     if (task.HasSucceeded && task.Ghost !is null) {
         if (Ghosts_Add(task.Ghost, "Medal " + level) !is null) SetStatus("Added medal ghost (level " + level + ").", true);
         else SetStatus("RaceGhost_Add rejected the medal ghost" + AddRejectedWhy(), true, true);
@@ -436,7 +453,8 @@ void LoadPbInner() {
     SetStatus("Requesting personal best ghost ...");
     auto task = sm.Campaign_GetMapRecordGhost(LocalUserId(), uid);
     if (task is null) { SetStatus("Campaign_GetMapRecordGhost returned null.", true, true); return; }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
     if (!task.HasSucceeded) {
         SetStatus("Campaign_GetMapRecordGhost failed: " + string(task.ErrorDescription), true, true);
         sm.ReleaseTaskResult(task.Id);
@@ -446,7 +464,8 @@ void LoadPbInner() {
     sm.ReleaseTaskResult(task.Id);
     if (g is null) { SetStatus("No personal best ghost for this map.", true); return; }
     uint deadline = Time::Now + 20000;
-    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
     if (g.DataState != CGameGhostScript::EDataState::Ready) { SetStatus("PB ghost came back " + tostring(g.DataState) + ".", true, true); return; }
     if (Ghosts_Add(g, "PB") !is null) SetStatus("Added personal best ghost.", true);
     else SetStatus("Could not add the personal best ghost" + AddRejectedWhy(), true, true);
@@ -472,7 +491,8 @@ void LoadPbInner() {
         SetStatus("Map_GetRecordGhost returned null.", true, true);
         return;
     }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
 
     if (task.HasSucceeded) {
         if (task.Ghost is null) {
@@ -504,10 +524,10 @@ void Save_Ghost(CGameGhostScript@ ghost, const string &in name) {
 }
 
 void Save_GhostCoro() {
-    g_busy = true;
+    LoadBegin();
     SaveGhostInner();
     @g_saveGhost = null;
-    g_busy = false;
+    LoadEnd();
 }
 
 void SaveGhostInner() {
@@ -543,7 +563,8 @@ void SaveGhostInner() {
         SetStatus("Replay_Save returned null.", true, true);
         return;
     }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { SetStatus("Load abandoned: you left the map before the ghost arrived."); return; }
     if (task.HasSucceeded) {
         SetStatus("Saved " + name, true);
     } else {
@@ -612,9 +633,9 @@ void AutoLoad_Update() {
 }
 
 void AutoLoadPbCoro() {
-    g_busy = true;
+    LoadBegin();
     g_quietLoad = true;
     LoadPbInner();
     g_quietLoad = false;
-    g_busy = false;
+    LoadEnd();
 }

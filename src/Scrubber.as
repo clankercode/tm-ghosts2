@@ -187,11 +187,22 @@ void DrawScrubberWindow() {
             UI::EndPopup();
         }
         UI::SameLine();
+#if TURBO
+        // Turbo selects a camera object rather than forcing a camera *type*, so the button offers whatever
+        // this playground's ManagedCams actually contains (Free among them) instead of a fixed list.
+        if (UI::Button(Icons::VideoCamera + " " + Spectate_TurboCamLabel() + "##cam", vec2(120, 0))) Spectate_CycleTurboCam(false);
+        if (UI::IsItemHovered()) {
+            AddSimpleTooltip("Spectator camera (click = next, right click = previous)\nThese are this playground's own cameras, read from the game: Free is a real free camera you can fly.\nGame leaves whatever the game had selected.");
+            if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleTurboCam(true);
+        }
+#else
         if (UI::Button(Icons::VideoCamera + " " + Spectate_CameraLabel(S_SpectateCameraType) + "##cam", vec2(96, 0))) Spectate_CycleCameraType(false);
         if (UI::IsItemHovered()) {
             AddSimpleTooltip("Spectator camera (click = next, right click = previous)\n  Replay: the engine's camera clip\n  Follow: chase cam\n  FreeCam: free camera (cam 7 in TM2020 terms)\n  Game: the game's own spectator camera controls\nOnly Game leaves your spectator keys working; the other three force the view, so the game's own camera keys do nothing while they are selected.");
             if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleCameraType(true);
         }
+#endif
+#if !TURBO
         if (S_SpectateCameraType == 1) {
             // Follow: which vehicle cam (the engine's forced Follow would always use cam 1)
             UI::SameLine();
@@ -201,6 +212,7 @@ void DrawScrubberWindow() {
                 if (UI::IsMouseClicked(UI::MouseButton::Right)) Spectate_CycleFollowCam(true);
             }
         }
+#endif
     }
     UI::SameLine();
     uint nMembers = locked ? Lock_Members().Length : 0;

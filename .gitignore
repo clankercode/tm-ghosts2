@@ -1,2 +1,3 @@
 *.op
 *.zip
+.codebase-memory/

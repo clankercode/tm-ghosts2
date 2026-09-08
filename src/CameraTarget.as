@@ -38,18 +38,53 @@ CGameControlCameraMaster@ TurboCamsMaster() {
     return term.CameraSet.CamsMaster;
 }
 
-// Aim every managed camera at `instId`, or back at the local vehicle when it is CamId_None.
-// Measured 2026-09-08: the writes land (every managed camera reports the ghost's id back) but the view does
-// not move, because a RaceGhost instance id is NOT a GameMobilId - the local player's own mobil reports
-// GameMobilId 0. Until the ghost's real mobil id is known, spectating is refused rather than left as a
-// silent no-op that also detaches the camera. The plumbing below is correct and ready for that id.
-const bool TurboCameraTargetResolved = false;
+// A race ghost's instance id is NOT a GameMobilId, which is what cost 0.6.0 its Turbo spectating: the
+// earlier attempt wrote the instance id straight into FollowedGameMobilId, every camera read it back
+// happily, and the view never moved. The scene keeps both numbers on the ghost's own mobil - ReplicaId is
+// the race instance id, GameMobilId is the dense id the cameras follow (0 = the local player's car) - so the
+// translation is a walk of CGameCtnPlayground.GameScene.GameMobils. Verified 2026-09-08.
+uint TurboGhostMobilId(uint instId) {
+    if (instId == 0 || instId == CamId_None) return 0;
+    auto cp = cast<CGameCtnPlayground>(App().CurrentPlayground);
+    if (cp is null || cp.GameScene is null) return 0;
+    auto scene = cp.GameScene;
+    for (uint i = 0; i < scene.GameMobils.Length; i++) {
+        auto m = scene.GameMobils[i];
+        if (m !is null && m.ReplicaId == instId) return m.GameMobilId;
+    }
+    return 0;
+}
 
+// Which camera a managed slot is, by type rather than by position: the order of ManagedCams is not
+// documented, and EGameCam is a *kind* of camera, not an index into that array. Reflection answers it
+// directly, so the setting can name a camera the player recognises and still find it whatever the order.
+string TurboCamKind(CGameControlCamera@ cam) {
+    if (cam is null) return "";
+    auto t = Reflection::TypeOf(cam);
+    if (t is null) return "";
+    string n = t.Name;
+    if (!n.StartsWith("CGameControlCamera")) return n;
+    // The plain base class is a real entry in ManagedCams; stripping the prefix would leave it nameless.
+    n = n.SubStr(18);
+    return n.Length == 0 ? "Camera" : n;
+}
+
+// Aim the managed cameras at `instId`, or back at the local vehicle when it is CamId_None. The engine
+// re-evaluates the target, so this is re-applied every frame from CamTarget_Update.
 bool CamTarget_ApplyTurbo(uint instId) {
     auto master = TurboCamsMaster();
     if (master is null) { g_camLastErr = "no camera set on the terminal"; return false; }
+    uint id = 0;
+    if (instId != CamId_None) {
+        id = TurboGhostMobilId(instId);
+        if (id == 0) {
+            // The ghost is in the race but the scene has not built its mobil (or it has been torn down at
+            // the end of its replay). Say so rather than silently aiming at the local car.
+            g_camLastErr = "that ghost has no vehicle in the scene to follow";
+            return false;
+        }
+    }
     g_camLastErr = "";
-    uint id = instId == CamId_None ? 0 : instId;
     for (uint i = 0; i < master.ManagedCams.Length; i++) {
         auto cam = master.ManagedCams[i];
         if (cam is null || cam.FollowedGameMobilId == id) continue;
@@ -57,6 +92,44 @@ bool CamTarget_ApplyTurbo(uint instId) {
         g_camHookWrites++;
     }
     return true;
+}
+
+// Switch the active camera by kind (see TurboCamKind). Empty name = leave the engine's choice alone.
+bool CamTarget_SetTurboCamKind(const string &in kind) {
+    if (kind.Length == 0) return true;
+    auto master = TurboCamsMaster();
+    if (master is null) return false;
+    int idx = CamTarget_TurboCamIndex(kind);
+    if (idx < 0) return false;
+    if (master.CurrentCam != uint(idx)) master.CurrentCam = uint(idx);
+    return true;
+}
+
+// The camera kinds this playground actually offers, in ManagedCams order, for the settings UI and for the
+// state export - guessing from the EGameCam enum would list cameras that are not there.
+// Measured 2026-09-08 on campaign 003: TrackManiaRace3, TrackManiaRace3, VehicleInternal, VehicleInternal,
+// TrackManiaRace, Camera, Free - so the kind alone does not identify a slot. Repeats get a "#2", "#3" suffix
+// so a saved setting always names exactly one camera, and the first of a kind keeps the plain readable name.
+array<string> CamTarget_TurboCamKinds() {
+    array<string> kinds;
+    auto master = TurboCamsMaster();
+    if (master is null) return kinds;
+    for (uint i = 0; i < master.ManagedCams.Length; i++) {
+        string kind = TurboCamKind(master.ManagedCams[i]);
+        if (kind.Length == 0) { kinds.InsertLast(""); continue; }
+        uint seen = 0;
+        for (uint j = 0; j < kinds.Length; j++) if (kinds[j] == kind || kinds[j].StartsWith(kind + "#")) seen++;
+        kinds.InsertLast(seen == 0 ? kind : kind + "#" + (seen + 1));
+    }
+    return kinds;
+}
+
+// The ManagedCams index a (possibly suffixed) kind names, or -1.
+int CamTarget_TurboCamIndex(const string &in kind) {
+    if (kind.Length == 0) return -1;
+    auto kinds = CamTarget_TurboCamKinds();
+    for (uint i = 0; i < kinds.Length; i++) if (kinds[i] == kind) return int(i);
+    return -1;
 }
 #endif
 
@@ -91,17 +164,10 @@ bool CamTarget_InstallHook() {
 #endif
 }
 
-#if TURBO
-const string TurboNoSpectateWhy =
-    "spectating a ghost is not available on Turbo yet: its cameras follow a GameMobilId, and the id a race "
-    "ghost gets is not one (the mapping is still being reverse engineered)";
-#endif
-
 // Whether the camera override can run at all. MP4 needs its resolver hook; Turbo needs only a camera set.
 // A plain question, with no side effect: it is asked once per frame by the UI and by State().
 bool CamTarget_Ready() {
 #if TURBO
-    if (!TurboCameraTargetResolved) return false;
     return TurboCamsMaster() !is null;
 #else
     return g_camHook !is null;
@@ -112,8 +178,7 @@ bool CamTarget_Ready() {
 string CamTarget_WhyNotReady() {
     if (CamTarget_Ready()) return "";
 #if TURBO
-    if (!TurboCameraTargetResolved) return TurboNoSpectateWhy;
-    return "this playground has no camera set";
+    return g_camLastErr.Length > 0 ? g_camLastErr : "this playground has no camera set";
 #else
     return g_camLastErr.Length > 0 ? g_camLastErr : "the camera target hook is not installed";
 #endif
@@ -178,7 +243,9 @@ void CamTarget_Update() {
     // Follow spectate: pick the vehicle cam (the engine would always use 0x12)
     g_camForcedCamId = (g_specActive && S_SpectateCameraType == 1) ? Spectate_FollowCamId() : 0;
 #if TURBO
-    if (TurboCameraTargetResolved) CamTarget_ApplyTurbo(id);
+    CamTarget_ApplyTurbo(id);
+    // The camera kind has to be re-asserted too: leaving the spectated car re-selects the race camera.
+    if (id != CamId_None) CamTarget_SetTurboCamKind(S_TurboSpectateCam);
 #endif
 }
 

@@ -140,6 +140,16 @@ namespace Ghosts2 {
             e["paused"] = g_clock[i].paused;
             e["speed"] = g_clock[i].speed;
             e["lastNowMs"] = g_clock[i].lastNowMs;
+#if TURBO
+            // How well the ghost is actually being held, in the engine's own terms: holdErr is the last
+            // tick's (rendered time - asked-for time), and the min/max pair is that error over a rolling
+            // 600-tick window. A held ghost that reads 0 is not stuttering; anything wide is.
+            e["engineNow"] = g_clock[i].engineNow;
+            e["tickEst"] = g_clock[i].tickEst;
+            e["holdErr"] = g_clock[i].holdErr;
+            e["holdErrMin"] = g_clock[i].holdErrMin;
+            e["holdErrMax"] = g_clock[i].holdErrMax;
+#endif
             ents.Add(e);
         }
         o["timeCtlEntries"] = ents;
@@ -153,6 +163,16 @@ namespace Ghosts2 {
         o["camForcedId"] = g_camForcedId;
         o["camHookWrites"] = g_camHookWrites;
         o["camLastErr"] = g_camLastErr;
+#if TURBO
+        // The cameras this playground offers, in ManagedCams order, so a caller (and the settings UI) can see
+        // what "Spectator camera" can actually be set to on this map rather than guessing from EGameCam.
+        auto cams = Json::Array();
+        auto kinds = CamTarget_TurboCamKinds();
+        for (uint i = 0; i < kinds.Length; i++) cams.Add(Json::Value(kinds[i]));
+        o["turboCams"] = cams;
+        o["turboCam"] = S_TurboSpectateCam;
+        o["turboSpecMobilId"] = g_specActive ? TurboGhostMobilId(g_specInstId) : 0;
+#endif
         // Why a pending restart has or has not fired yet: the difference between "the add is waiting" and
         // "the add was parked to save your lap" is invisible from the ghost list alone.
         o["modeName"] = CurrentModeName();

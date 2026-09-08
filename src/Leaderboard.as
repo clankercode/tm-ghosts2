@@ -67,10 +67,17 @@ void Lb_Fetch(uint offset) {
     startnew(CoroutineFuncUserdataString(Lb_FetchCoro), "" + offset);
 }
 
+// The fetch is single-flight on its own flag, separate from the load path's g_busy, so it carries its own
+// map token: a leaderboard for the previous track is worse than none.
+string g_lbForMapUid = "";
+bool LbFetchStillWanted() { return g_lbForMapUid.Length > 0 && CurrentMapUid() == g_lbForMapUid; }
+
 void Lb_FetchCoro(const string &in offsetStr) {
     g_lbBusy = true;
+    g_lbForMapUid = CurrentMapUid();
     LbFetchInner(Text::ParseUInt(offsetStr));
     g_lbBusy = false;
+    g_lbForMapUid = "";
 }
 
 void LbFetchInner(uint offset) {
@@ -86,7 +93,8 @@ void LbFetchInner(uint offset) {
     g_lbStatus = "Fetching this map's records ...";
     dm.RetrieveRecords(map.MapInfo, LocalUserId());
     uint deadline = Time::Now + 20000;
-    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline) yield();
+    while (dm.LatestResult == CGameDataManagerScript::EResult::Running && Time::Now < deadline && LbFetchStillWanted()) yield();
+    if (!LbFetchStillWanted()) { g_lbStatus = "Abandoned: you left the map."; return; }
     if (dm.LatestResult != CGameDataManagerScript::EResult::Finished_Ok) {
         g_lbStatus = "RetrieveRecords: " + tostring(dm.LatestResult);
         return;
@@ -123,7 +131,8 @@ void LbFetchInner(uint offset) {
     g_lbStatus = "Fetching " + zone + " records " + (offset + 1) + ".." + (offset + count) + " ...";
     auto task = rules.ScoreMgr.MapLeaderBoard_GetPlayerList(MwId(0), uid, "", wstring(zone), offset, count);
     if (task is null) { g_lbStatus = "MapLeaderBoard_GetPlayerList returned null."; return; }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LbFetchStillWanted()) yield();
+    if (!LbFetchStillWanted()) { g_lbStatus = "Abandoned: you left the map."; return; }
     if (task.HasSucceeded) {
         g_lbEntries.RemoveRange(0, g_lbEntries.Length);
         for (uint i = 0; i < task.LeaderBoardInfo.Length; i++) {
@@ -166,9 +175,9 @@ bool Lb_Load(uint rank) {
 }
 
 void Lb_LoadCoro(const string &in rankStr) {
-    g_busy = true;
+    LoadBegin();
     LbLoadInner(Text::ParseUInt(rankStr));
-    g_busy = false;
+    LoadEnd();
 }
 
 void LbLoadInner(uint rank) {
@@ -183,7 +192,8 @@ void LbLoadInner(uint rank) {
     auto g = dm.GhostRetrieve(e.url);
     if (g is null) { SetStatus("GhostRetrieve returned nothing for " + label + " (" + tostring(dm.LatestResult) + ").", true, true); return; }
     uint deadline = Time::Now + 20000;
-    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline) yield();
+    while (g.DataState == CGameGhostScript::EDataState::InProgress && Time::Now < deadline && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { g_lbStatus = "Abandoned: you left the map."; return; }
     if (g.DataState != CGameGhostScript::EDataState::Ready) { SetStatus("Ghost " + label + " came back " + tostring(g.DataState) + ".", true, true); return; }
     if (Ghosts_Add(g, "LB " + label) !is null) SetStatus("Added leaderboard ghost " + label + " (" + FormatTime(e.score) + ").", true);
     else SetStatus("Could not add the ghost " + label + AddRejectedWhy(), true, true);
@@ -196,7 +206,8 @@ void LbLoadInner(uint rank) {
     SetStatus("Downloading ghost " + label + " ...");
     auto task = rules.DataFileMgr.Ghost_Download(wstring(e.fileName), e.url);
     if (task is null) { SetStatus("Ghost_Download returned null for " + label, true, true); return; }
-    while (task.IsProcessing) yield();
+    while (task.IsProcessing && LoadStillWanted()) yield();
+    if (!LoadStillWanted()) { g_lbStatus = "Abandoned: you left the map."; return; }
     if (task.HasSucceeded && task.Ghost !is null) {
         if (Ghosts_Add(task.Ghost, "LB " + label) !is null) SetStatus("Added leaderboard ghost " + label + " (" + FormatTime(e.score) + ").", true);
         else SetStatus("RaceGhost_Add rejected the ghost " + label + AddRejectedWhy(), true, true);

@@ -95,5 +95,10 @@ uint S_SpectateCameraType = 0;
 [Setting category="Spectate" name="Follow camera" min=1 max=3 description="Vehicle camera used by the Follow spectator camera: 1 behind (far), 2 behind (close), 3 internal. The scrubber's Cam button cycles these."]
 uint S_SpectateFollowCam = 1;
 
+#if TURBO
+[Setting category="Spectate" name="Spectator camera" description="Which of the playground's own cameras follows the ghost. Turbo does not have MP4's SpectatorForceCameraType; it selects a camera out of CGameControlCameraMaster.ManagedCams, and which ones exist depends on the playground - the scrubber's camera button cycles the ones this map actually offers, including the free camera. Blank leaves the game's current choice alone."]
+string S_TurboSpectateCam = "";
+#endif
+
 [Setting category="Spectate" name="Also set UISequence = EndRound" description="Mirrors Nadeo's StartReplaySequence(). May fight the running mode script; off by default."]
 bool S_SpectateEndRoundSequence = false;

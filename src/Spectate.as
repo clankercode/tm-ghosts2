@@ -10,6 +10,12 @@ uint g_specPrevTarget = 0;
 uint g_specPrevCamType = 0;
 bool g_specPrevForceSpectator = false;
 CGamePlaygroundUIConfig::EUISequence g_specPrevSequence = CGamePlaygroundUIConfig::EUISequence::None;
+#if TURBO
+// Turbo picks the active camera by index into the terminal's ManagedCams, so leaving a ghost has to put the
+// player's camera back where it was - nothing else restores it.
+bool g_specPrevTurboCamSaved = false;
+uint g_specPrevTurboCam = 0;
+#endif
 
 
 bool Spectate_Start(uint instId) {
@@ -39,6 +45,10 @@ bool Spectate_Start(uint instId) {
 #endif
         g_specPrevSequence = ui.UISequence;
         g_specSaved = true;
+#if TURBO
+        auto master = TurboCamsMaster();
+        if (master !is null) { g_specPrevTurboCam = master.CurrentCam; g_specPrevTurboCamSaved = true; }
+#endif
     }
 
 #if !TURBO
@@ -91,7 +101,10 @@ void Spectate_Stop() {
                     || (S_SpectateRespawnOnStop == RespawnOnAdd::UnlessMidLap && !Race_MidLap()));
 }
 
-void Spectate_StopEx(bool respawn) {
+// `async` is false on the unload path: a coroutine started from OnDestroyed/OnDisabled outlives the module
+// that owns its callback and keeps writing to the game after the plugin is gone.
+void Spectate_StopEx(bool respawn, bool async = true) {
+    bool wasSpectating = g_specActive;
     auto ui = UiAll();
     // Turbo never forces the spectator (no such field), so it never grows the spectator camera clip either.
     bool wasForced = HasSpectatorForcedTarget && g_specActive && g_specSaved && S_SpectateForceSpectator;
@@ -103,6 +116,11 @@ void Spectate_StopEx(bool respawn) {
 #endif
         if (S_SpectateEndRoundSequence) ui.UISequence = g_specPrevSequence;
     }
+#if TURBO
+    auto master = TurboCamsMaster();
+    if (master !is null && g_specPrevTurboCamSaved) master.CurrentCam = g_specPrevTurboCam;
+    g_specPrevTurboCamSaved = false;
+#endif
     Spectate_Reset();
     // Forcing the spectator made the terminal's CGameCtnMediaClipPlayer play a spectator camera clip aimed at the
     // ghost. Clearing ForceSpectator/SpectatorForcedTarget does not stop that clip (it keeps pushing a forced
@@ -112,22 +130,52 @@ void Spectate_StopEx(bool respawn) {
     if (wasForced) {
         if (respawn) {
             if (!Race_SpawnLocal(S_SpectateRespawnDelayMs)) warn("Ghosts2: could not respawn the local player after spectating; the camera may stay on the ghost");
-        } else {
+        } else if (async) {
             // No restart: release the terminal's spectator clip slot ourselves (see Spectate_DropClipLater).
             startnew(Spectate_DropClipLater);
         }
     }
-    // Chase / free cameras leave the camera system's auto target on the ghost even after the respawn.
-    startnew(CamTarget_ResetAfterStop);
+    // Chase / free cameras leave the camera system's auto target on the ghost even after the respawn - but
+    // only chase that when we were actually spectating: Cleanup() calls this on every unload, and a stop that
+    // did nothing has nothing to undo.
+    if (wasSpectating) {
+        CamTarget_ResetToLocal();
+        if (async) startnew(CamTarget_ResetAfterStop);
+    }
 }
+
+// Plugin unload: put the game back synchronously, leaving nothing running behind us.
+void Spectate_StopForUnload() { Spectate_StopEx(false, false); }
 
 // Forget the saved state without writing to the game (map change / plugin unload paths).
 void Spectate_Reset() {
     CamTarget_Clear();
+#if TURBO
+    g_specPrevTurboCamSaved = false;
+#endif
     g_specActive = false;
     g_specInstId = 0;
     g_specSaved = false;
 }
+
+#if TURBO
+// Turbo's camera button cycles the playground's own managed cameras, which is a different - and richer - list
+// than MP4's four SpectatorForceCameraType values: it includes the free camera as a real camera rather than a
+// forced camera type. The list is read from the game, so a playground that has no free camera never offers one.
+void Spectate_CycleTurboCam(bool backwards) {
+    auto kinds = CamTarget_TurboCamKinds();
+    if (kinds.Length == 0) return;
+    int idx = kinds.Find(S_TurboSpectateCam);
+    if (idx < 0) idx = backwards ? int(kinds.Length) - 1 : 0;
+    else idx = (idx + (backwards ? int(kinds.Length) - 1 : 1)) % int(kinds.Length);
+    S_TurboSpectateCam = kinds[idx];
+    CamTarget_SetTurboCamKind(S_TurboSpectateCam);
+}
+
+string Spectate_TurboCamLabel() {
+    return S_TurboSpectateCam.Length == 0 ? "Game" : S_TurboSpectateCam;
+}
+#endif
 
 void Spectate_ForgetGhost(uint instId) {
     if (g_specActive && g_specInstId == instId) Spectate_Stop();

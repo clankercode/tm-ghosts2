@@ -17,27 +17,9 @@
 
 #if TURBO
 // Turbo (32-bit) has the same shape at different offsets. Nothing there rewrites a record's StartTime per
-// frame, so Ghosts2 holds it from Update() instead of hooking.
-//
-// KNOWN BUG (2026-09-08): that is NOT enough, and Turbo playback visibly stutters because of it. "The engine
-// does not clobber our StartTime" is a different claim from "our StartTime is the right value when the engine
-// renders", and only the first is true. The engine computes elapsed = EngineNow - StartTime at its own tick,
-// while we compute StartTime = RaceNow - wanted at ours, so the rendered time carries the frame-phase error
-// (EngineNow_at_tick - RaceNow_at_our_write), which changes every frame.
-//
-// Measured on campaign 003 with the race clock provably advancing (6560 ms window): a ghost held at
-// wanted = 8000 had our StartTime writes landing every single frame, while the engine's own elapsed
-// (rec+0x14) read 8033..8074 - a mean lag of ~45 ms and ~40 ms of jitter, which is about a metre of position
-// wobble at racing speed. That is the vibration.
-//
-// The 0.5.0 note claiming this was "measured exact" was self-confirming: TimeCtl_GhostTime answers for an
-// owned record with our own `wanted`, so every check compared our intention against itself. TimeCtl_HoldError
-// exists now so this class of bug is measurable rather than invisible.
-//
-// The fix is the one MP4 already uses - write StartTime from inside the engine tick that consumes it - but
-// that tick has not been identified on Turbo yet. Race_UpdateActiveGhostPlayback 0x00EB4980 is the vis apply
-// and is nod-list based (walks [rules+0x11d0]+0x590, clock ghost+0x1BC), so it is not obviously the writer of
-// rec+0x14; the store to rec+0x14 is still unlocated. Do NOT hook speculatively. See TASKS.md.
+// frame, so Ghosts2 holds it from Update() instead of hooking - but it holds it against the engine's own
+// clock, recovered from the record, not against rules.Now. Driving it from rules.Now is what made Turbo
+// playback stutter through 0.6.0; TimeCtl_WriteClocks carries the measurement and the reasoning.
 const uint16 O_Race_ScriptAddEntries = 0x0c4;   // RaceGhost_Add/Remove act here
 const uint16 O_Race_ScriptAddEntryCount = 0x0c8;
 const uint16 O_Race_AddEntries = 0x3ac;         // live copy, rebuilt at every (re)spawn
@@ -101,6 +83,20 @@ class ClockEntry {
     float speed = 1.0;
     bool paused = false;
     uint lastNowMs = 0;
+#if TURBO
+    // The engine's own playback clock, recovered from the record rather than read from a second clock that
+    // does not agree with it. See TimeCtl_WriteClocks.
+    bool synced = false;        // false until the first write gives us a StartTime to recover EngineNow from
+    bool seedPending = false;   // the next delta spans a seed write, not one engine tick: do not integrate it
+    uint engineNow = 0;         // engine clock as of its last tick
+    uint writtenStart = 0;      // the StartTime we last wrote (EngineNow = writtenStart + elapsed)
+    double wantedAtWrite = 0;   // what that write asked for, so the hold error is measurable
+    double tickEst = 0;         // smoothed engine tick interval, ms
+    int holdErr = 0;            // engine elapsed - wantedAtWrite, last tick
+    int holdErrMin = 0;
+    int holdErrMax = 0;
+    uint holdErrFrames = 0;
+#endif
 }
 array<ClockEntry@> g_clock;
 
@@ -412,20 +408,67 @@ void TimeCtl_UpdateList(array<PluginGhost@>@ list) {
 }
 
 #if TURBO
-// Turbo's half of the clock hook: the engine reads StartTime whenever it needs the ghost's time, so writing
-// `now - wanted` once per frame is exactly as precise as MP4's in-hook write, without a hook.
+// Turbo's half of the clock hook - without a hook, by borrowing the engine's own clock.
+//
+// The obvious implementation (StartTime = RaceNow - wanted, once per Update) is wrong, and was the stutter.
+// The engine's playback clock is NOT rules.Now: measured 2026-09-08 over 90 samples on campaign 003, with a
+// ghost held at wanted = 8000, EngineNow - RaceNow ran -88..-39 ms and the rendered elapsed wandered over
+// 8017..8123. A StartTime computed from RaceNow therefore lands somewhere different every frame, and 106 ms
+// of playback wander is about a metre of position wobble at racing speed: a vibrating car.
+//
+// So do not involve a second clock at all. The engine wrote elapsed = EngineNow - StartTime at its last tick,
+// and StartTime is a value this plugin put there, so
+//     EngineNow = writtenStart + elapsed
+// hands its clock back exactly, in its own phase. Everything below is expressed in that clock: `wanted` is
+// integrated with the engine's tick delta (so playback speed is exact too), and the write aims one tick
+// ahead, because the value written now is consumed by the engine's *next* tick. What is left over is only
+// the variation in tick length instead of the whole inter-clock offset.
 void TimeCtl_WriteClocks() {
-    uint nowMs = RaceNow();
-    if (nowMs == 0) return;
     for (uint i = 0; i < g_clock.Length; i++) {
         auto e = g_clock[i];
         if (e.rec == 0) continue;
-        if (e.lastNowMs != 0 && nowMs > e.lastNowMs && !e.paused) e.wanted += double(nowMs - e.lastNowMs) * e.speed;
-        e.lastNowMs = nowMs;
+        uint el = SafeU32(e.rec + O_Rec_EngineElapsed);
+        uint engineNow = e.writtenStart + el;
+        int64 delta = e.synced ? int64(engineNow) - int64(e.engineNow) : 0;
+
+        if (!e.synced || delta < 0 || delta > 2000) {
+            // Nothing to follow yet, or the record was rebuilt under us (respawn) and the recovered clock is
+            // nonsense. Seed from RaceNow for this one frame; it is only ever a seed, never the time base.
+            uint raceNow = RaceNow();
+            if (raceNow == 0) continue;
+            engineNow = raceNow;
+            e.tickEst = 0;
+            e.synced = true;
+            e.seedPending = true;
+        } else if (delta == 0) {
+            continue;   // the engine has not ticked since our last write: there is nothing new to correct
+        } else if (e.seedPending) {
+            // This delta spans the seed write rather than one engine tick, so it must not move `wanted` and
+            // must not seed the tick estimate. One frame at 60 Hz is close enough until a real tick lands.
+            e.seedPending = false;
+            e.tickEst = 16.0;
+        } else {
+            if (!e.paused) e.wanted += double(delta) * e.speed;
+            e.tickEst = e.tickEst * 0.75 + double(delta) * 0.25;
+            e.holdErr = int(el) - int(e.wantedAtWrite);
+            if (e.holdErrFrames == 0) { e.holdErrMin = e.holdErr; e.holdErrMax = e.holdErr; }
+            else {
+                if (e.holdErr < e.holdErrMin) e.holdErrMin = e.holdErr;
+                if (e.holdErr > e.holdErrMax) e.holdErrMax = e.holdErr;
+            }
+            if (++e.holdErrFrames >= 600) e.holdErrFrames = 0;   // rolling window: a stale spike ages out
+        }
+
+        e.engineNow = engineNow;
+        e.lastNowMs = engineNow;
         if (e.wanted < 0) e.wanted = 0;
-        uint w = uint(e.wanted);
-        if (w > nowMs) w = nowMs;
-        Dev::Write(e.rec + O_Rec_StartTime, uint(nowMs - w));
+        uint target = engineNow + uint(e.tickEst + 0.5);
+        double w = e.wanted;
+        if (w > double(target)) w = double(target);
+        uint start = target - uint(w);
+        Dev::Write(e.rec + O_Rec_StartTime, start);
+        e.writtenStart = start;
+        e.wantedAtWrite = w;
         g_timeCtlWrites++;
     }
 }

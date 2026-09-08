@@ -29,8 +29,9 @@ void Cleanup() {
     Scrubber_Close();
     TimeCtl_RemoveHook();
     CamTarget_RemoveHook();
-    // Leave the race as we found it: restore the UI config, drop our bookkeeping.
-    Spectate_Stop();
+    // Leave the race as we found it: restore the UI config, drop our bookkeeping. Synchronously - a coroutine
+    // started here would run on after the module holding its callback is gone.
+    Spectate_StopForUnload();
     Ghosts_ForgetAll();
 }
 
